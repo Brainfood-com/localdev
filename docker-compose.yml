@@ -1,0 +1,70 @@
+version: '3.4'
+
+networks:
+  default:
+
+volumes:
+  ssl:
+
+x-logging: &_logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "10"
+
+x-docker-base: &_docker-base
+  image: localdev-dind
+  build:
+    context: ./images/dind
+    args:
+      - from=docker:stable-dind
+  logging:
+    <<: *_logging
+  privileged: true
+  restart: always
+  volumes:
+    - ssl:/srv/localdev/ssl:ro
+
+x-docker-slave: &_docker-slave
+  <<: *_docker-base
+  networks:
+    default:
+      aliases:
+        - docker-slave
+
+x-docker-master: &_docker-master
+  <<: *_docker-base
+  networks:
+    default:
+      aliases:
+        - docker-master
+
+services:
+  docker-slave-0:
+    <<: *_docker-slave
+
+  docker-slave-1:
+    <<: *_docker-slave
+
+  docker-master-0:
+    <<: *_docker-master
+
+  docker-master-1:
+    <<: *_docker-master
+
+  control:
+    image: localdev
+    build:
+      context: ./images/control
+    logging:
+      <<: *_logging
+    depends_on:
+      - docker-master-0
+      - docker-master-1
+      - docker-slave-0
+      - docker-slave-1
+    volumes:
+      - ssl:/srv/localdev/ssl:rw
+    environment:
+      - DOCKER_HOST=tcp://docker-master
+    stop_signal: SIGKILL
