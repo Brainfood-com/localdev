@@ -3,6 +3,7 @@
 set -e
 
 declare -a scripts=(
+	configure-nexus
 	entrypoint
 	healthcheck
 )

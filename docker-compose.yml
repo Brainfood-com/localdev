@@ -23,6 +23,9 @@ x-docker-base: &_docker-base
     <<: *_logging
   privileged: true
   restart: always
+  command: [
+    "--registry-mirror=https://registry-mirror.local",
+  ]
   volumes:
     - ssl:/srv/localdev/ssl:ro
 
@@ -66,12 +69,15 @@ services:
     image: localdev-nginx
     build:
       context: ./images/nginx
+    restart: on-failure
     depends_on:
       - nexus
     networks:
       default:
         aliases:
           - nexus.local
+          - registry.local
+          - registry-mirror.local
     volumes:
       - ssl:/srv/localdev/ssl:ro
 
@@ -79,6 +85,7 @@ services:
     image: localdev
     build:
       context: ./images/control
+    restart: on-failure
     logging:
       <<: *_logging
     depends_on:

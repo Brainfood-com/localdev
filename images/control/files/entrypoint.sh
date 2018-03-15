@@ -74,6 +74,9 @@ configure_docker_daemons() {
 
 configure_docker_daemons
 create_ssl_cert_key registry.local
+create_ssl_cert_key registry-mirror.local
+
+/srv/localdev/scripts/configure-nexus
 
 if [[ $# -eq 0 ]]; then
 	set -- sleep infinity
