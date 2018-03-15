@@ -5,6 +5,7 @@ networks:
 
 volumes:
   ssl:
+  nexus-data:
 
 x-logging: &_logging
   driver: "json-file"
@@ -49,10 +50,28 @@ services:
   docker-master-0:
     <<: *_docker-master
 
+  nexus:
+    image: localdev-nexus3
+    build:
+      context: ./images/nexus3
+      args:
+        - from=sonatype/nexus3
+    logging:
+      <<: *_logging
+    volumes:
+      - nexus-data:/nexus-data
+    restart: always
+
   nginx:
     image: localdev-nginx
     build:
       context: ./images/nginx
+    depends_on:
+      - nexus
+    networks:
+      default:
+        aliases:
+          - nexus.local
     volumes:
       - ssl:/srv/localdev/ssl:ro
 
@@ -66,8 +85,10 @@ services:
       - docker-master-0
       - docker-slave-0
       - docker-slave-1
+      - nginx
     volumes:
       - ssl:/srv/localdev/ssl:rw
     environment:
       - DOCKER_HOST=tcp://docker-master
     stop_signal: SIGKILL
+

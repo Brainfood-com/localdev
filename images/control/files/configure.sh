@@ -9,7 +9,7 @@ declare -a scripts=(
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update
-apt-get install -y openssl wget libltdl7 haproxy
+apt-get install -y openssl wget libltdl7
 
 mkdir -p /srv/localdev/scripts
 for script in "${scripts[@]}"; do
