@@ -1,4 +1,8 @@
+FROM docker:stable-dind
+
 FROM debian:stretch
+
+COPY --from=0 /usr/local/bin/docker /usr/local/bin/docker
 
 COPY files /tmp/files
 RUN ["/tmp/files/configure.sh"]
