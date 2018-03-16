@@ -2,6 +2,9 @@ version: '3.4'
 
 networks:
   default:
+  nginx:
+    external:
+      name: nginx
 
 volumes:
   ssl:
@@ -25,6 +28,7 @@ x-docker-base: &_docker-base
   restart: always
   command: [
     "--registry-mirror=https://registry-mirror.local",
+    "--swarm-default-advertise-addr=eth0",
   ]
   volumes:
     - ssl:/srv/localdev/ssl:ro
@@ -35,6 +39,8 @@ x-docker-slave: &_docker-slave
     default:
       aliases:
         - docker-slave
+  environment:
+    - LOCALDEV_VHOST_SUFFIX
 
 x-docker-master: &_docker-master
   <<: *_docker-base
@@ -42,6 +48,10 @@ x-docker-master: &_docker-master
     default:
       aliases:
         - docker-master
+    nginx:
+  environment:
+    - LOCALDEV_VHOST_SUFFIX
+    - VIRTUAL_HOST=docker-master.${LOCALDEV_VHOST_SUFFIX}
 
 services:
   docker-slave-0:
@@ -61,9 +71,16 @@ services:
         - from=sonatype/nexus3
     logging:
       <<: *_logging
+    networks:
+      default:
+      nginx:
     volumes:
       - nexus-data:/nexus-data
     restart: always
+    environment:
+      - LOCALDEV_VHOST_SUFFIX
+      - VIRTUAL_HOST=docker-nexus.${LOCALDEV_VHOST_SUFFIX}
+      - VIRTUAL_PORT=8081
 
   nginx:
     image: localdev-nginx
@@ -78,8 +95,14 @@ services:
           - nexus.local
           - registry.local
           - registry-mirror.local
+      nginx:
     volumes:
       - ssl:/srv/localdev/ssl:ro
+    environment:
+      - LOCALDEV_VHOST_SUFFIX
+      - CERT_NAME=${LOCALDEV_CERT_NAME}
+      - VIRTUAL_HOST=docker-registry-mirror.${LOCALDEV_VHOST_SUFFIX},docker-registry.${LOCALDEV_VHOST_SUFFIX}
+      - HTTPS_METHOD=noredirect
 
   control:
     image: localdev
