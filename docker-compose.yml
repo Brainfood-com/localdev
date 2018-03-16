@@ -49,6 +49,13 @@ services:
   docker-master-0:
     <<: *_docker-master
 
+  nginx:
+    image: localdev-nginx
+    build:
+      context: ./images/nginx
+    volumes:
+      - ssl:/srv/localdev/ssl:ro
+
   control:
     image: localdev
     build:
