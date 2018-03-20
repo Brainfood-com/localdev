@@ -57,6 +57,9 @@ class API():
         result_payload = json.loads(response.read().decode())
         return result_payload['result']
 
+def build_maven2_proxy_config(name, version_policy, remote_url):
+    return [{"attributes": {"maven": {"versionPolicy": version_policy, "layoutPolicy": "STRICT"}, "proxy": {"remoteUrl": remote_url, "contentMaxAge": 1440, "metadataMaxAge": 1440}, "httpclient": {"blocked": False, "autoBlock": True, "connection": {"useTrustStore": False}}, "storage": {"blobStoreName": "default", "strictContentTypeValidation": True}, "negativeCache": {"enabled": True, "timeToLive": 1440}}, "name": name, "format": "", "type": "", "url": "", "online": True, "authEnabled": False, "httpRequestSettings": False, "recipe": "maven2-proxy"}]
+
 api = API('127.0.0.1', 8081)
 
 found_repos = {}
@@ -71,6 +74,13 @@ if not 'docker-proxy' in found_repos:
     autovivify_repos.append([{"attributes": {"docker": {"forceBasicAuth": False, "v1Enabled": True}, "proxy": {"remoteUrl": "https://registry-1.docker.io", "contentMaxAge": 1440, "metadataMaxAge": 1440}, "dockerProxy": {"indexType": "REGISTRY"}, "httpclient": {"blocked": False, "autoBlock": True, "connection": {"useTrustStore": False}}, "storage": {"blobStoreName": "default", "strictContentTypeValidation": True}, "negativeCache": {"enabled": True, "timeToLive": 1440}}, "name": "docker-proxy", "format": "", "type": "", "url": "", "online": True, "authEnabled": False, "httpRequestSettings": False, "recipe": "docker-proxy"}])
 if not 'docker-group' in found_repos:
     autovivify_repos.append([{"attributes": {"docker": {"httpPort": 8083, "forceBasicAuth": False, "v1Enabled": True}, "storage": {"blobStoreName": "default", "strictContentTypeValidation": True}, "group": {"memberNames": ["docker-hosted", "docker-proxy"]}}, "name": "docker-group", "format": "", "type": "", "url": "", "online": True, "recipe": "docker-group"}])
+
+if not 'spring-milestone' in found_repos:
+    autovivify_repos.append(build_maven2_proxy_config('spring-milestone', 'RELEASE', 'https://repo.spring.io/milestone'))
+if not 'spring-snapshot' in found_repos:
+    autovivify_repos.append(build_maven2_proxy_config('spring-snapshot', 'SNAPSHOT', 'https://repo.spring.io/snapshot'))
+if not 'rabbit-milestone' in found_repos:
+    autovivify_repos.append(build_maven2_proxy_config('rabbit-milestone', 'RELEASE', 'https://dl.bintray.com/rabbitmq/maven-milestones'))
 
 if len(autovivify_repos):
     if os.path.isfile('/nexus-data/healthcheck/first-time'):
@@ -90,6 +100,26 @@ if len(autovivify_repos):
 
     for data in autovivify_repos:
         api.call('coreui_Repository', 'create', data)
+
+    result = api.call('coreui_Repository', 'read', None)
+    maven_members = []
+    maven_repo = None
+    for full_repo in result['data']:
+        if full_repo['name'] == 'maven-public':
+            maven_repo = full_repo
+            maven_members = full_repo['attributes']['group']['memberNames']
+
+    autovivify_maven_members = []
+    if maven_members.count('spring-milestone') == 0:
+        autovivify_maven_members.append('spring-milestone')
+    if maven_members.count('spring-snapshot') == 0:
+        autovivify_maven_members.append('spring-snapshot')
+    if maven_members.count('rabbit-milestone') == 0:
+        autovivify_maven_members.append('rabbit-milestone')
+
+    if len(autovivify_maven_members) and maven_repo:
+        maven_repo['attributes']['group']['memberNames'] = maven_members + autovivify_maven_members
+        api.call('coreui_Repository', 'update', [maven_repo])
 
     if not os.path.isfile('/nexus-data/healthcheck'):
         os.mkdir('/nexus-data/healthcheck')
