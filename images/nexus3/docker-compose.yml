@@ -1,0 +1,55 @@
+version: '3.4'
+
+networks:
+  default:
+  nginx:
+    external:
+      name: nginx
+
+volumes:
+  nexus-data:
+
+x-logging: &_logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "10"
+
+services:
+  nexus:
+    image: localdev-nexus3
+    build:
+      args:
+        - http_proxy
+      context: .
+    logging:
+      <<: *_logging
+    networks:
+      default:
+    volumes:
+      - nexus-data:/nexus-data
+    restart: always
+
+  nginx:
+    image: localdev-nexus3-nginx
+    build:
+      args:
+        - http_proxy
+      context: .
+      target: nginx
+    restart: on-failure
+    logging:
+      <<: *_logging
+    depends_on:
+      - nexus
+    networks:
+      default:
+      nginx:
+    environment:
+      - CERT_NAME=${LOCALDEV_CERT_NAME}
+#      - LETSENCRYPT_VHOST=docker-registry.${LOCALDEV_VHOST_SUFFIX},docker-nexus.${LOCALDEV_VHOST_SUFFIX}
+#      - LETSENCRYPT_EMAIL=${LOCALDEV_LETSENCRYPT_EMAIL}
+      - VIRTUAL_HOST=docker-registry-mirror.${LOCALDEV_VHOST_SUFFIX},docker-registry.${LOCALDEV_VHOST_SUFFIX},nexus.${LOCALDEV_VHOST_SUFFIX}
+#      - VIRTUAL_HOST=docker-registry.${LOCALDEV_VHOST_SUFFIX},docker-nexus.${LOCALDEV_VHOST_SUFFIX}
+      - HTTPS_METHOD=noredirect
+
