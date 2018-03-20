@@ -1,4 +1,4 @@
-FROM nginx as nginx
+FROM nginx
 
 COPY nginx-files /tmp/files
 ARG NGINX_UPGRADE
