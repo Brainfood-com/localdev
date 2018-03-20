@@ -37,7 +37,7 @@ services:
         - http_proxy
         - NGINX_UPGRADE=1
       context: .
-      target: nginx
+      dockerfile: Dockerfile.nginx
     restart: on-failure
     logging:
       <<: *_logging
