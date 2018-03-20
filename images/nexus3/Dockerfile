@@ -1,6 +1,7 @@
 FROM nginx as nginx
 
 COPY nginx-files /tmp/files
+ARG NGINX_UPGRADE
 RUN ["/tmp/files/configure.sh"]
 
 ENTRYPOINT ["/srv/localdev/scripts/entrypoint"]

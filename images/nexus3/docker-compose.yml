@@ -35,6 +35,7 @@ services:
     build:
       args:
         - http_proxy
+        - NGINX_UPGRADE=1
       context: .
       target: nginx
     restart: on-failure

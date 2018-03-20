@@ -6,10 +6,13 @@ declare -a scripts=(
 	entrypoint
 	healthcheck
 )
-export DEBIAN_FRONTEND=noninteractive
 
-apt-get update
-apt-get install -y nginx
+if [[ $NGINX_UPGRADE ]]; then
+	export DEBIAN_FRONTEND=noninteractive
+
+	apt-get update
+	apt-get install -y nginx
+fi
 
 mkdir -p /etc/nginx/conf.d
 cp /tmp/files/nginx-docker.conf /etc/nginx/conf.d/nginx-docker.conf
