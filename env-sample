@@ -1,3 +1,4 @@
-LOCALDEV_NEXUS_CERT_NAME=default
+# not used just yet
+# LOCALDEV_NEXUS_CERT_NAME=default
 # optional
-LOCALDEV_NEXUS_SUFFIX=tooz.private.brainfood.com
+# LOCALDEV_NEXUS_SUFFIX=tooz.private.brainfood.com
