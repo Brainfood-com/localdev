@@ -62,6 +62,7 @@ configure_docker_daemons() {
 	declare master_addresses=($(getent hosts docker-master | cut -f 1 -d ' '))
 	declare slave_addresses=($(getent hosts docker-slave | cut -f 1 -d ' '))
 
+	[[ ${#master_addresses[*]} -gt 0 ]] || return
 	configure_docker_node master "${master_addresses[0]}"
 	declare address
 	for address in "${master_addresses[@]:1}"; do
