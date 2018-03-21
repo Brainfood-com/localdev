@@ -7,6 +7,7 @@ declare -a compose_files=(
 	/srv/localdev/subs/nginx-proxy/docker-compose.yml
 )
 declare -a docker_networks=(
+	localdev_default
 	nginx
 )
 declare -a network_drivers=(

@@ -2,6 +2,9 @@ version: '3.4'
 
 networks:
   default:
+  localdev:
+    external:
+      name: localdev_default
   nginx:
     external:
       name: nginx
@@ -45,6 +48,11 @@ services:
       - nexus
     networks:
       default:
+      localdev:
+        aliases:
+          - docker-registry-mirror
+          - docker-registry
+          - maven-mirror
       nginx:
     environment:
       - CERT_NAME=${LOCALDEV_NEXUS_CERT_NAME}
