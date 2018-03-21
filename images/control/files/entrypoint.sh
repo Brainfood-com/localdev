@@ -91,7 +91,7 @@ create_ssl_cert_key registry.local
 create_ssl_cert_key registry-mirror.local
 
 for network_name in "${docker_networks[@]}"; do
-	if ! docker network ls -q -f "name=^${network_name}$" 1>/dev/null; then
+	if [[ -z $(docker network ls -q -f "name=^${network_name}$") ]]; then
 		for network_driver  in "${network_drivers[@]}"; do
 			if docker network create --attachable -d "${network_driver}" "${network_name}" 2>/dev/null; then
 				break
