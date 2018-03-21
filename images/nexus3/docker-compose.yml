@@ -47,10 +47,10 @@ services:
       default:
       nginx:
     environment:
-      - CERT_NAME=${LOCALDEV_CERT_NAME}
-#      - LETSENCRYPT_VHOST=docker-registry.${LOCALDEV_VHOST_SUFFIX},docker-nexus.${LOCALDEV_VHOST_SUFFIX}
+      - CERT_NAME=${LOCALDEV_NEXUS_CERT_NAME}
+#      - LETSENCRYPT_VHOST=docker-registry.${LOCALDEV_NEXUS_SUFFIX},docker-nexus.${LOCALDEV_NEXUS_SUFFIX}
 #      - LETSENCRYPT_EMAIL=${LOCALDEV_LETSENCRYPT_EMAIL}
-      - VIRTUAL_HOST=docker-registry-mirror.${LOCALDEV_VHOST_SUFFIX},docker-registry.${LOCALDEV_VHOST_SUFFIX},nexus.${LOCALDEV_VHOST_SUFFIX}
-#      - VIRTUAL_HOST=docker-registry.${LOCALDEV_VHOST_SUFFIX},docker-nexus.${LOCALDEV_VHOST_SUFFIX}
+      - VIRTUAL_HOST=docker-registry-mirror.${LOCALDEV_NEXUS_SUFFIX},docker-registry.${LOCALDEV_NEXUS_SUFFIX},nexus.${LOCALDEV_NEXUS_SUFFIX}
+#      - VIRTUAL_HOST=docker-registry.${LOCALDEV_NEXUS_SUFFIX},docker-nexus.${LOCALDEV_NEXUS_SUFFIX}
       - HTTPS_METHOD=noredirect
 
