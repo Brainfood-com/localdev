@@ -1,0 +1,3 @@
+LOCALDEV_NEXUS_CERT_NAME=default
+# optional
+LOCALDEV_NEXUS_SUFFIX=tooz.private.brainfood.com
