@@ -1,6 +1,6 @@
 # Getting Started
 
-* Clone the repo
+* Clone the repo: `git clone --recursive $REPO_URL`
 * `docker-compose build`
 * `docker-compose up -d`
 * `docker-compose logs -f`, then wait
