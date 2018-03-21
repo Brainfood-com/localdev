@@ -1,0 +1,4 @@
+[submodule "subs/nginx-proxy"]
+	path = subs/nginx-proxy
+	url = git@github.com:Brainfood-com/nginx-proxy.git
+	branch = master
