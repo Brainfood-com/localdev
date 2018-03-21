@@ -38,7 +38,7 @@ services:
         - NGINX_UPGRADE=1
       context: .
       dockerfile: Dockerfile.nginx
-    restart: on-failure
+    restart: always
     logging:
       <<: *_logging
     depends_on:
