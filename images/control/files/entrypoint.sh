@@ -2,6 +2,18 @@
 
 set -e
 
+declare -a compose_files=(
+	/srv/localdev/images/nexus3/docker-compose.yml
+	/srv/localdev/subs/nginx-proxy/docker-compose.yml
+)
+declare -a docker_networks=(
+	nginx
+)
+declare -a network_drivers=(
+	overlay
+	bridge
+)
+
 create_ssl_cert_key() {
 	declare cn="$1"
 	shift
@@ -76,6 +88,26 @@ configure_docker_daemons() {
 configure_docker_daemons
 create_ssl_cert_key registry.local
 create_ssl_cert_key registry-mirror.local
+
+for network_name in "${docker_networks[@]}"; do
+	if ! docker network ls -q -f "name=^${network_name}$" 1>/dev/null; then
+		for network_driver  in "${network_drivers[@]}"; do
+			if docker network create --attachable -d "${network_driver}" "${network_name}" 2>/dev/null; then
+				break
+			fi
+		done
+	fi
+done
+for compose_file in "${compose_files[@]}"; do
+	: docker-compose -f "$compose_file" pull
+done
+for compose_file in "${compose_files[@]}"; do
+	docker-compose -f "$compose_file" build
+done
+
+for compose_file in "${compose_files[@]}"; do
+	docker-compose -f "$compose_file" up -d
+done
 
 if [[ $# -eq 0 ]]; then
 	set -- sleep infinity

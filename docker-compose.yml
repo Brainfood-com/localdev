@@ -1,0 +1,34 @@
+version: '3.4'
+
+networks:
+  default:
+
+volumes:
+  ssl:
+
+x-logging: &_logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "10"
+
+services:
+  control:
+    image: localdev
+    build:
+      context: ./images/control
+    restart: on-failure
+    logging:
+      <<: *_logging
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./images:/srv/localdev/images:ro
+      - ./subs:/srv/localdev/subs:ro
+      - ssl:/srv/localdev/ssl:rw
+    env_file:
+      - .env
+    environment:
+      - http_proxy
+#      - DOCKER_HOST=tcp://docker-master
+    stop_signal: SIGKILL
+
