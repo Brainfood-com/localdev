@@ -53,6 +53,8 @@ services:
           - docker-registry-mirror
           - docker-registry
           - maven-mirror
+          - npm-registry
+          - npm-proxy
       nginx:
     environment:
       - CERT_NAME=${LOCALDEV_NEXUS_CERT_NAME}

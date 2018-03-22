@@ -207,6 +207,30 @@ class Maven2ProxyRepo(ProxyRepo, Maven2Repo):
     def __init__(self, **args):
         super(Maven2ProxyRepo, self).__init__(**args)
 
+class NPMRepo(Repo):
+    def __init__(self, **args):
+        super(NPMRepo, self).__init__(**args)
+
+class NPMHostedRepo(NPMRepo):
+    recipe = 'npm-hosted'
+
+    def __init__(self, **args):
+        super(NPMHostedRepo, self).__init__(**args)
+        args['storage_writePolicy'] = 'ALLOW_ONCE'
+        self.attributes.append(RepoAttrStorage(**args))
+
+class NPMProxyRepo(ProxyRepo, NPMRepo):
+    recipe = 'npm-proxy'
+
+    def __init__(self, **args):
+        super(NPMProxyRepo, self).__init__(**args)
+
+class NPMGroupRepo(GroupRepo, NPMRepo):
+    recipe = 'npm-group'
+
+    def __init__(self, **args):
+        super(NPMGroupRepo, self).__init__(**args)
+
 class CustomEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, Repo):
@@ -236,6 +260,13 @@ if not 'rabbit-milestone' in found_repos:
     autovivify_repos.append(Maven2ProxyRepo(name = 'rabbit-milestone', maven_versionPolicy = 'RELEASE', proxy_remoteUrl = 'https://dl.bintray.com/rabbitmq/maven-milestones'))
 if not 'localdev-maven-group' in found_repos:
     autovivify_repos.append(Maven2GroupRepo(name = 'localdev-maven-group', group_memberNames = ['maven-public', 'spring-milestone', 'spring-snapshot', 'rabbit-milestone']))
+
+if not 'npm-hosted' in found_repos:
+    autovivify_repos.append(NPMHostedRepo(name = 'npm-hosted'))
+if not 'npm-proxy' in found_repos:
+    autovivify_repos.append(NPMProxyRepo(name = 'npm-proxy', proxy_remoteUrl = 'http://registry.npmjs.org/'))
+if not 'npm-group' in found_repos:
+    autovivify_repos.append(NPMGroupRepo(name = 'npm-group', group_memberNames = ['npm-hosted', 'npm-proxy']))
 
 if len(autovivify_repos):
     if os.path.isfile('/nexus-data/healthcheck/first-time'):
