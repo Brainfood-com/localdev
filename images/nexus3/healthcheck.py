@@ -195,6 +195,12 @@ class Maven2Repo(Repo):
         super(Maven2Repo, self).__init__(**args)
         self.attributes.append(RepoAttrMaven2(**args))
 
+class Maven2GroupRepo(GroupRepo, DockerRepo):
+    recipe = 'maven2-group'
+
+    def __init__(self, **args):
+        super(Maven2GroupRepo, self).__init__(**args)
+
 class Maven2ProxyRepo(ProxyRepo, Maven2Repo):
     recipe = 'maven2-proxy'
 
@@ -228,6 +234,8 @@ if not 'spring-snapshot' in found_repos:
     autovivify_repos.append(Maven2ProxyRepo(name = 'spring-snapshot', maven_versionPolicy = 'SNAPSHOT', proxy_remoteUrl = 'https://repo.spring.io/snapshot'))
 if not 'rabbit-milestone' in found_repos:
     autovivify_repos.append(Maven2ProxyRepo(name = 'rabbit-milestone', maven_versionPolicy = 'RELEASE', proxy_remoteUrl = 'https://dl.bintray.com/rabbitmq/maven-milestones'))
+if not 'localdev-maven-group' in found_repos:
+    autovivify_repos.append(Maven2GroupRepo(name = 'localdev-maven-group', group_memberNames = ['maven-public', 'spring-milestone', 'spring-snapshot', 'rabbit-milestone']))
 
 if len(autovivify_repos):
     if os.path.isfile('/nexus-data/healthcheck/first-time'):
@@ -247,26 +255,6 @@ if len(autovivify_repos):
 
     for repo in autovivify_repos:
         foo = api.call('coreui_Repository', 'create', [repo])
-
-    result = api.call('coreui_Repository', 'read', None)
-    maven_members = []
-    maven_repo = None
-    for full_repo in result['data']:
-        if full_repo['name'] == 'maven-public':
-            maven_repo = full_repo
-            maven_members = full_repo['attributes']['group']['memberNames']
-
-    autovivify_maven_members = []
-    if maven_members.count('spring-milestone') == 0:
-        autovivify_maven_members.append('spring-milestone')
-    if maven_members.count('spring-snapshot') == 0:
-        autovivify_maven_members.append('spring-snapshot')
-    if maven_members.count('rabbit-milestone') == 0:
-        autovivify_maven_members.append('rabbit-milestone')
-
-    if len(autovivify_maven_members) and maven_repo:
-        maven_repo['attributes']['group']['memberNames'] = maven_members + autovivify_maven_members
-        api.call('coreui_Repository', 'update', [maven_repo])
 
     if not os.path.isfile('/nexus-data/healthcheck'):
         os.mkdir('/nexus-data/healthcheck')
