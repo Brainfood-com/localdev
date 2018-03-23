@@ -10,24 +10,12 @@ declare -a docker_networks=(
 	localdev_default
 	nginx
 )
-declare -a network_drivers=(
-	overlay
-	bridge
-)
 
 /srv/localdev/scripts/configure_docker_daemons
 /srv/localdev/scripts/create_ssl_cert_key registry.local
 /srv/localdev/scripts/create_ssl_cert_key registry-mirror.local
 
-for network_name in "${docker_networks[@]}"; do
-	if [[ -z $(docker network ls -q -f "name=^${network_name}$") ]]; then
-		for network_driver  in "${network_drivers[@]}"; do
-			if docker network create --attachable -d "${network_driver}" "${network_name}" 2>/dev/null; then
-				break
-			fi
-		done
-	fi
-done
+/srv/localdev/scripts/create_docker_networks "${docker_networks[@]}"
 docker-compose -f /srv/localdev/images/squid/docker-compose.yml build
 docker-compose -f /srv/localdev/images/squid/docker-compose.yml up -d
 
