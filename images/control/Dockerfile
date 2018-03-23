@@ -14,6 +14,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& find /var/cache/apt /var/lib/apt -type f -delete \
 	&& true
 
+COPY configure_docker_daemons.sh /srv/localdev/scripts/configure_docker_daemons
 COPY create_ssl_cert_key.sh /srv/localdev/scripts/create_ssl_cert_key
 COPY entrypoint.sh /srv/localdev/scripts/entrypoint
 COPY healthcheck.sh /srv/localdev/scripts/healthcheck
