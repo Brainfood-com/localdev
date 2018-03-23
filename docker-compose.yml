@@ -31,4 +31,5 @@ services:
       - http_proxy
 #      - DOCKER_HOST=tcp://docker-master
     stop_signal: SIGKILL
+    command: ["/srv/localdev/scripts/control"]
 

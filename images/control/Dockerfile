@@ -21,6 +21,7 @@ COPY configure_docker_daemons.sh /srv/localdev/scripts/configure_docker_daemons
 COPY create_ssl_cert_key.sh /srv/localdev/scripts/create_ssl_cert_key
 COPY entrypoint.sh /srv/localdev/scripts/entrypoint
 COPY healthcheck.sh /srv/localdev/scripts/healthcheck
+COPY control.sh /srv/localdev/scripts/control
 
 ENTRYPOINT ["/srv/localdev/scripts/entrypoint"]
 HEALTHCHECK --interval=15s CMD ["/srv/localdev/scripts/healthcheck"]
