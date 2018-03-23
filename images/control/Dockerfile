@@ -7,8 +7,15 @@ FROM debian:stretch
 COPY --from=src-compose /usr/local/bin/docker-compose /usr/local/bin/docker-compose
 COPY --from=src-docker /usr/local/bin/docker /usr/local/bin/docker
 
-COPY files /tmp/files
-RUN ["/tmp/files/configure.sh"]
+RUN export DEBIAN_FRONTEND=noninteractive \
+	&& apt-get update \
+	&& apt-get install -y openssl wget libltdl7 \
+	&& apt-get clean \
+	&& find /var/cache/apt /var/lib/apt -type f -delete \
+	&& true
+
+COPY entrypoint.sh /srv/localdev/scripts/entrypoint
+COPY healthcheck.sh /srv/localdev/scripts/healthcheck
 
 ENTRYPOINT ["/srv/localdev/scripts/entrypoint"]
 HEALTHCHECK --interval=15s CMD ["/srv/localdev/scripts/healthcheck"]
