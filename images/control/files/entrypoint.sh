@@ -99,6 +99,11 @@ for network_name in "${docker_networks[@]}"; do
 		done
 	fi
 done
+docker-compose -f /srv/localdev/images/squid/docker-compose.yml build
+docker-compose -f /srv/localdev/images/squid/docker-compose.yml up -d
+
+export http_proxy=http://http-proxy:3128
+
 for compose_file in "${compose_files[@]}"; do
 	: docker-compose -f "$compose_file" pull
 done

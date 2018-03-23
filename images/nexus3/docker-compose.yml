@@ -25,6 +25,7 @@ services:
       args:
         - http_proxy
       context: .
+      network: localdev_default
     logging:
       <<: *_logging
     networks:
@@ -41,6 +42,7 @@ services:
         - NGINX_UPGRADE=1
       context: .
       dockerfile: Dockerfile.nginx
+      network: localdev_default
     restart: always
     logging:
       <<: *_logging

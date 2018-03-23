@@ -1,0 +1,33 @@
+version: '3.4'
+
+networks:
+  localdev:
+    external:
+      name: localdev_default
+
+volumes:
+  squid-data:
+
+x-logging: &_logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "10"
+
+services:
+  squid:
+    image: localdev-squid
+    build:
+      args:
+        - http_proxy
+      context: .
+    logging:
+      <<: *_logging
+    networks:
+      localdev:
+        aliases:
+          - http-proxy
+    volumes:
+      - squid-data:/var/spool/squid
+    restart: always
+
