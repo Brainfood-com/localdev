@@ -23,7 +23,7 @@ set -e
 	fi
 } > /etc/squid/auto-squid.conf
 
-/usr/sbin/squid -z
+/usr/sbin/squid -f /etc/squid/auto-squid.conf -z
 
 [[ $# -eq 0 ]] && set -- /usr/sbin/squid -NYCd 1 -f /etc/squid/auto-squid.conf
 
