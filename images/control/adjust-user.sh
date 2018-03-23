@@ -17,7 +17,7 @@ if [[ $MAP_GID && $MAP_GID -ne 0 ]]; then
 	groupmod -g $MAP_GID "$TARGET_GROUP"
 fi
 if [[ $MAP_UID && $MAP_UID -ne 0 ]]; then
-	usermod -u $MAP_UID "$TARGET_USER"
+	usermod -u $MAP_UID "$TARGET_USER" 1>/dev/null
 fi
 
 find "$target_home" \
