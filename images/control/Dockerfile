@@ -11,9 +11,11 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get update \
 	&& apt-get install -y openssl wget libltdl7 \
 	&& apt-get clean \
+	&& addgroup localgroup && adduser --disabled-password --ingroup localgroup --gecos '' localdev \
 	&& find /var/cache/apt /var/lib/apt -type f -delete \
 	&& true
 
+COPY adjust-user.sh /srv/localdev/scripts/adjust-user
 COPY create_docker_networks.sh /srv/localdev/scripts/create_docker_networks
 COPY configure_docker_daemons.sh /srv/localdev/scripts/configure_docker_daemons
 COPY create_ssl_cert_key.sh /srv/localdev/scripts/create_ssl_cert_key

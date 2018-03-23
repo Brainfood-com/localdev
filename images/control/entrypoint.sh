@@ -11,6 +11,7 @@ declare -a docker_networks=(
 	nginx
 )
 
+/srv/localdev/scripts/adjust-user localdev localgroup
 /srv/localdev/scripts/configure_docker_daemons
 /srv/localdev/scripts/create_ssl_cert_key registry.local
 /srv/localdev/scripts/create_ssl_cert_key registry-mirror.local
