@@ -9,7 +9,7 @@ COPY --from=src-docker /usr/local/bin/docker /usr/local/bin/docker
 
 RUN export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get update \
-	&& apt-get install -y openssl wget libltdl7 \
+	&& apt-get install -y openssl wget libltdl7 python python-yaml \
 	&& apt-get clean \
 	&& addgroup localgroup && adduser --disabled-password --ingroup localgroup --gecos '' localdev \
 	&& find /var/cache/apt /var/lib/apt -type f -delete \
@@ -22,6 +22,7 @@ COPY create_ssl_cert_key.sh /srv/localdev/scripts/create_ssl_cert_key
 COPY entrypoint.sh /srv/localdev/scripts/entrypoint
 COPY healthcheck.sh /srv/localdev/scripts/healthcheck
 COPY control.sh /srv/localdev/scripts/control
+COPY yaml2json.py /srv/localdev/scripts/yaml2json
 
 ENTRYPOINT ["/srv/localdev/scripts/entrypoint"]
 HEALTHCHECK --interval=15s CMD ["/srv/localdev/scripts/healthcheck"]
