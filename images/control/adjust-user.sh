@@ -36,6 +36,10 @@ declare -A group=(
 	[users]="${BASH_REMATCH[4]}"
 )
 
+if [[ $MAP_USER =~ ^uid=([0-9]+)\((.*)\)' 'gid=([0-9]+)\((.*)\)' 'groups=(.*)$ ]]; then
+	MAP_UID=${BASH_REMATCH[1]}
+	MAP_GID=${BASH_REMATCH[3]}
+fi
 if [[ $MAP_GID && $MAP_GID -ne 0 ]]; then
 	[[ ${group[id]} -ne $MAP_GID ]] && groupmod -g $MAP_GID "$TARGET_GROUP"
 fi
