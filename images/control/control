@@ -2,10 +2,6 @@
 
 set -e
 
-declare -a compose_files=(
-	/srv/localdev/images/nexus3/docker-compose.yml
-	/srv/localdev/subs/nginx-proxy/docker-compose.yml
-)
 declare -a docker_networks=(
 	localdev_default
 	nginx
@@ -21,16 +17,13 @@ docker-compose -f /srv/localdev/images/squid/docker-compose.yml up -d
 
 export http_proxy=http://http-proxy:3128
 
-for compose_file in "${compose_files[@]}"; do
-	: docker-compose -f "$compose_file" pull
-done
-for compose_file in "${compose_files[@]}"; do
-	docker-compose -f "$compose_file" build
-done
+docker-compose -f /srv/localdev/images/nexus3/docker-compose.yml build
+docker-compose -f /srv/localdev/images/nexus3/docker-compose.yml up -d
 
-for compose_file in "${compose_files[@]}"; do
-	docker-compose -f "$compose_file" up -d
-done
+docker-compose -f /srv/localdev/subs/nginx-proxy/docker-compose.yml build
+docker-compose -f /srv/localdev/subs/nginx-proxy/docker-compose.yml up -d
+
+echo "Everything has been built and brought online; localdev is ready."
 
 if [[ $# -eq 0 ]]; then
 	set -- sleep infinity

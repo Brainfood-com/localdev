@@ -3,7 +3,7 @@
 * Clone the repo: `git clone --recursive $REPO_URL`
 * `docker-compose build`
 * `docker-compose up -d`
-* `docker-compose logs -f`, then wait
+* `docker-compose logs -f`, then wait; you'll want to see the line `Everything has been built and brought online; localdev is ready.`
 
 # This project provides the following services to help local development
 
