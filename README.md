@@ -9,11 +9,12 @@
 
 * nginx-proxy, listening on `:80` and `:443`
 * `letsencrypt` for auto-creating SSL certificates for public hostnames.
-* `nexus`, a mirroring service for remote repositories; currently, maven is 100% working.
+* `squid`, answering on `http://http-proxy:3128/`
+* `nexus`, a mirroring service for remote repositories
+  * maven is supported
+  * npm is supported
 
 # Roadmap
 
-* Add `squid`, or configure nexus/raw.
-* Configure nexus/npm.
 * Add some sort of continuous integration
 
