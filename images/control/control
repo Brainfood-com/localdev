@@ -22,6 +22,10 @@ docker-compose -f /srv/localdev/images/nexus3/docker-compose.yml up -d
 
 docker-compose -f /srv/localdev/subs/nginx-proxy/docker-compose.yml build
 docker-compose -f /srv/localdev/subs/nginx-proxy/docker-compose.yml up -d
+docker-compose -p email-hub-dev -f /srv/localdev/subs/email-hub/docker-compose.dev.yml build
+docker-compose -p email-hub-dev -f /srv/localdev/subs/email-hub/docker-compose.dev.yml up -d
+docker-compose -p email-hub-prod -f /srv/localdev/subs/email-hub/docker-compose.prod.yml build
+docker-compose -p email-hub-prod -f /srv/localdev/subs/email-hub/docker-compose.prod.yml up -d
 
 echo "Everything has been built and brought online; localdev is ready."
 

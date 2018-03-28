@@ -2,3 +2,7 @@
 	path = subs/nginx-proxy
 	url = git@github.com:Brainfood-com/nginx-proxy.git
 	branch = master
+[submodule "subs/email-hub"]
+	path = subs/email-hub
+	url = git@github.com:Brainfood-com/email-hub.git
+	branch = master
