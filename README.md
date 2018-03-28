@@ -17,4 +17,4 @@
 # Roadmap
 
 * Add some sort of continuous integration
-
+* Add email capture service.
