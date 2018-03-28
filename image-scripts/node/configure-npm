@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# This script will configure npm to run inside docker.  The only
+# feature it currently supports is the use of a local mirror
+# repository.
+
+npm config -g set registry http://npm-registry/repository/npm-group

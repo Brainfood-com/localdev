@@ -1,0 +1,207 @@
+#!/bin/bash
+
+set -e
+
+RELATIVE_DIR="${MAP_PWD#$MAP_TOP_DIR}"
+t_flag=
+tty -s && t_flag=-t
+
+if [[ $MAP_TERM =~ ^([0-9]*):([0-9]*):(.*)$ ]]; then
+	export COLUMNS=${BASH_REMATCH[1]} LINES=${BASH_REMATCH[2]} TERM=${BASH_REMATCH[3]}
+fi
+
+#echo "COLUMNS=$COLUMNS LINES=$LINES"
+project_container_id=
+
+start_project() {
+	[[ $project_container_id ]] && return
+
+	declare -A labels=(
+		[com.brainfood.docker.localdev.top_dir]="$MAP_TOP_DIR"
+		[com.brainfood.docker.localdev.map_user]="$MAP_USER"
+		[com.brainfood.docker.localdev.map_umask]="$MAP_UMASK"
+	)
+
+	declare -a filter_args=()
+	for label in "${!labels[@]}"; do
+		filter_args+=("--filter" "label=$label=${labels[$label]}")
+	done
+
+	declare container_id_and_image_hash="$(docker container ls -a "${filter_args[@]}" --format '{{print .ID}} {{print .Image}} {{print .Networks}}')"
+
+	if [[ $container_id_and_image_hash =~ ^([^ ]+)' '([^ ]+)' '(.*)$ ]]; then
+		declare container_id="${BASH_REMATCH[1]}"
+		declare container_image_hash="${BASH_REMATCH[2]}"
+		declare container_networks_raw="${BASH_REMATCH[3]//,/ }"
+		if [[ $container_image_hash != localdev ]]; then
+			docker rm -f "$container_id" 1>/dev/null
+			container_id=
+		else
+			declare -A container_networks
+			declare network
+			for network in $container_networks_raw; do
+				container_networks[$network]=1
+			done
+			if [[ -z ${container_networks[localdev_default]} ]]; then
+				docker rm -f "$container_id" 1>/dev/null
+				container_id=
+			fi
+		fi
+	fi
+
+	if ! [[ $container_id ]]; then
+		declare -a create_args=(
+			--network localdev_default
+			-v "$MAP_TOP_DIR:$MAP_TOP_DIR"
+			-v "/var/run/docker.sock:/var/run/docker.sock"
+		)
+		declare label
+		for label in "${!labels[@]}"; do
+			create_args+=("--label" "$label=${labels[$label]}")
+		done
+
+		container_id="$(docker create "${create_args[@]}" localdev)"
+		if ! [[ $container_id ]]; then
+			echo "Couldn't create new container!" 1>&2
+			exit 1
+		fi
+	fi
+
+	docker start "$container_id" 1>/dev/null
+	project_container_id="$container_id"
+}
+
+run_tool() {
+	declare cmd="$1"
+	shift
+	declare service_name label value tool_label tool
+	declare -A service_target_user service_target_pwd tool_to_service tool_to_executable tool_to_target_user tool_to_target_pwd
+	while read line; do
+		# {"key":"'postgresql'","value":["'com.brainfood.docker.localdev.target_user=postgres'","'com.brainfood.docker.localdev.tool.pg_dump'","'com.brainfood.docker.localdev.tool.psql'"]}
+		[[ $line =~ ^'{"key":"'([^\"]+)'","value":['(.*) ]] || continue
+		service_name="${BASH_REMATCH[1]}"
+		line="${BASH_REMATCH[2]}"
+		while [[ $line =~ \"([^\"=]+)(=([^\"]+))?\",?(.*) ]]; do
+			label="${BASH_REMATCH[1]}"
+			value="${BASH_REMATCH[3]}"
+			line="${BASH_REMATCH[4]}"
+			case "$label" in
+				(com.brainfood.docker.localdev.target_user)
+					service_target_user[$service_name]="$value"
+					;;
+				(com.brainfood.docker.localdev.target_pwd)
+					service_target_pwd[$service_name]="$value"
+					;;
+				(com.brainfood.docker.localdev.tool.*)
+					tool_label="${label#com.brainfood.docker.localdev.tool.}"
+					case "$tool_label" in
+						(*.target_user)
+							tool_to_target_user[${tool_label%.target_user}]="$value"
+							:
+							;;
+						(*.target_pwd)
+							tool_to_target_pwd[${tool_label%.target_pwd}]="$value"
+							;;
+						(*)
+							tool_to_service[$tool_label]="$service_name"
+							tool_to_executable[$tool_label]="$value"
+							;;
+					esac
+			esac
+		done
+	done < <(
+		#(docker cp --archive=false "$project_container_id:$MAP_TOP_DIR/docker-compose.dev.yml" -) | \
+		#tar -Oxf - docker-compose.dev.yml | \
+		echo "$MAP_DEV_YML" |
+		(/srv/localdev/scripts/yaml2json) | \
+		jq -c '.services | with_entries(select(.value | has("labels")) | .value = (.value.labels)) | to_entries[]'
+		#jq -c '.services | with_entries(select(.value | has("labels")) | .value = (.value.labels | map(@sh)) | .key = (.key | @sh)) | to_entries[]'
+	)
+
+	declare wanted_service="${tool_to_service[$cmd]}"
+
+	if [[ -z $wanted_service ]]; then
+		echo "Could not find tool: $cmd" 1>&2
+		exit 1
+	fi
+
+	declare COMPOSE_PROJECT_NAME="$(extract_project_var COMPOSE_PROJECT_NAME)"
+	declare ESCAPED_PROJECT_NAME="$(escape_project_name "$COMPOSE_PROJECT_NAME")"
+
+	declare -a filter_args=(
+		--filter "label=com.docker.compose.project=$ESCAPED_PROJECT_NAME"
+		--filter "label=com.brainfood.docker.localdev.tool.$cmd"
+	)
+
+	declare tool_container_id="$(docker container ls -a "${filter_args[@]}" --format '{{print .ID}}')"
+	if [[ -z $tool_container_id ]]; then
+		compose_helper dev up -d "$wanted_service"
+		sleep 1
+		tool_container_id="$(docker container ls -a "${filter_args[@]}" --format '{{print .ID}}')"
+	fi
+	if [[ -z $tool_container_id ]]; then
+		echo "Could not find tool: $cmd" 1>&2
+		exit 1
+	fi
+	tool_container_id="${tool_container_id%% *}"
+	declare executable="${tool_to_executable[$cmd]:-$cmd}"
+	declare target_user="${tool_to_target_user[$cmd]:-${service_target_user[$wanted_service]}}"
+	declare target_pwd="${tool_to_target_pwd[$cmd]:-${service_target_pwd[$wanted_service]}}"
+
+	declare working_dir="/"
+	if [[ $target_pwd = relative ]]; then
+		working_dir="/srv/app$RELATIVE_DIR"
+	fi
+	exec docker exec $t_flag -i -e COLUMNS -e LINES -e TERM -w "$working_dir" -u "$target_user" "$tool_container_id" "$executable" "$@"
+	exit 1
+}
+
+compose_helper() {
+	declare cmd="$1"
+	shift
+	start_project
+	docker exec $t_flag -i -e COLUMNS -e LINES -e TERM -w "$MAP_TOP_DIR" "$project_container_id" docker-compose -f "docker-compose.$cmd.yml" "$@"
+}
+
+extract_project_var() {
+	(
+		eval "$MAP_ENV/.env"
+		eval echo "\$$1"
+	)
+}
+
+escape_project_name() {
+	declare token="$1"
+	while [[ $token =~ ^(.*)[^a-zA-Z0-9]+(.*)$ ]]; do
+		token="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+	done
+	echo "$token"
+}
+
+escape_project_service() {
+	declare token="$1"
+	while [[ $token =~ ^(.*)[^a-zA-Z0-9-]+(.*)$ ]]; do
+		token="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+	done
+	echo "$token"
+}
+
+cmd="$1"
+shift || cmd=help
+
+case "$cmd" in
+	(help)
+		echo "You need help"
+		;;
+	(exec)
+		[[ $# -eq 0 ]] && set -- bash
+		start_project
+		docker exec $t_flag -i -e COLUMNS -e LINES -e TERM "$project_container_id" "$@"
+		;;
+	(dev|prod)
+		compose_helper "$cmd" "$@"
+		;;
+	(*)
+		run_tool "$cmd" "$@"
+esac
+

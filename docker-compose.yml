@@ -16,7 +16,8 @@ services:
   control:
     image: localdev
     build:
-      context: ./images/control
+      context: .
+      dockerfile: images/control/Dockerfile
     restart: on-failure
     logging:
       <<: *_logging

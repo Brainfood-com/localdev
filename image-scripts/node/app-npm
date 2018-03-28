@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -e
+
+# Install the package
+gosu node npm install
+# And now we can run the application
+exec "$@"

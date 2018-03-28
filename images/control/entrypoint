@@ -2,6 +2,13 @@
 
 set -e
 
+label_to_var() {
+	export "$1"="$(docker container inspect "$HOSTNAME" --format "{{index .Config.Labels \"com.brainfood.docker.localdev.$2\"}}")"
+}
+
+label_to_var MAP_USER map_user
+label_to_var MAP_UMASK map_umask
+
 /srv/localdev/scripts/adjust-user localdev localgroup
 
 if [[ $# -eq 0 ]]; then

@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# This script will configure maven to run inside docker.  The only
+# feature it currently supports is the use of a local mirror
+# repository.
+
+# The value of MAVEN_REPO_MIRROR will be split on commas(",").  Each
+# token will then contain a specification of which "named" maven repos
+# should be redirected to the target url.
+
+# Example:
+#  MAVEN_REPO_MIRROR=(central:spring-snapshot):http://nexus.example.org/repository/maven-public
+
+set -e
+mkdir -p "$HOME/.m2/"
+
+build_mirrors() {
+	echo ' <mirrors>'
+	declare oIFS="$IFS" mirror_spec
+	IFS=,
+	declare -a mirror_specs=($MAVEN_REPO_MIRROR)
+	IFS=:
+	for mirror_spec in "${mirror_specs[@]}"; do
+		if [[ $mirror_spec =~ ^\(([^\)]+)\):(.*)$ ]]; then
+			for mirror_name in ${BASH_REMATCH[1]}; do
+				cat << _EOF_
+   <mirror>
+     <id>localdev_mirror_$mirror_name</id>
+     <name>Mirror</name>
+     <url>${BASH_REMATCH[2]}</url>
+     <mirrorOf>$mirror_name</mirrorOf>
+   </mirror>
+_EOF_
+			done
+		fi
+	done
+	echo ' </mirrors>'
+}
+
+
+{
+	echo '<settings>'
+	build_mirrors
+	echo '</settings>'
+} > "$HOME/.m2/settings.xml"
+
+grep -n '' "$HOME/.m2/settings.xml"

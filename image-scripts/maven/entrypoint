@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -e
+
+PATH="/srv/localdev/image-scripts/maven:/srv/localdev/scripts:$PATH"
+# Adjust the in-docker user to match the HOST
+adjust-user java java
+# Configure maven inside docker
+gosu java configure-mvn
+# And now we can run the application
+exec "$@"

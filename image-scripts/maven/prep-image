@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -e
+
+apt-get update
+apt-get install -y gosu
+
+adduser --disabled-password --gecos "" java
+
+find /var/lib/apt/lists /var/cache/apt/archives -type f -delete

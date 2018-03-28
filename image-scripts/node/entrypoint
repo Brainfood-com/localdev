@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -e
+
+PATH="/srv/localdev/image-scripts/node:/srv/localdev/scripts:$PATH"
+# Adjust the in-docker user to match the HOST
+adjust-user node node
+# Configure node inside docker
+configure-npm
+# And now we can run the application
+exec "$@"
