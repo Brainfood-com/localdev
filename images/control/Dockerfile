@@ -15,14 +15,14 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 	&& find /var/cache/apt /var/lib/apt -type f -delete \
 	&& true
 
-COPY adjust-user.sh /srv/localdev/scripts/adjust-user
-COPY create_docker_networks.sh /srv/localdev/scripts/create_docker_networks
-COPY configure_docker_daemons.sh /srv/localdev/scripts/configure_docker_daemons
-COPY create_ssl_cert_key.sh /srv/localdev/scripts/create_ssl_cert_key
-COPY entrypoint.sh /srv/localdev/scripts/entrypoint
-COPY healthcheck.sh /srv/localdev/scripts/healthcheck
-COPY control.sh /srv/localdev/scripts/control
-COPY yaml2json.py /srv/localdev/scripts/yaml2json
+COPY adjust-user /srv/localdev/scripts/adjust-user
+COPY create_docker_networks /srv/localdev/scripts/create_docker_networks
+COPY configure_docker_daemons /srv/localdev/scripts/configure_docker_daemons
+COPY create_ssl_cert_key /srv/localdev/scripts/create_ssl_cert_key
+COPY entrypoint /srv/localdev/scripts/entrypoint
+COPY healthcheck /srv/localdev/scripts/healthcheck
+COPY control /srv/localdev/scripts/control
+COPY yaml2json /srv/localdev/scripts/yaml2json
 
 ENTRYPOINT ["/srv/localdev/scripts/entrypoint"]
 HEALTHCHECK --interval=15s CMD ["/srv/localdev/scripts/healthcheck"]

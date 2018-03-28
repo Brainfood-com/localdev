@@ -11,6 +11,6 @@ RUN apt-get update \
 RUN mkdir /etc/squid/squid.conf.d
 
 ENV SQUID_cache_dir_size 10240
-COPY entrypoint.sh /srv/localdev/scripts/entrypoint
+COPY entrypoint /srv/localdev/scripts/entrypoint
 
 ENTRYPOINT ["/srv/localdev/scripts/entrypoint"]
