@@ -3,6 +3,6 @@
 set -e
 
 # Build the package
-gosu java mvn clean package
+gosu java mvn ${MVN_ARGS:-clean package}
 # And now we can run the application
 exec "$@"
