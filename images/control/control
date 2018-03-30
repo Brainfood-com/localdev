@@ -7,25 +7,26 @@ declare -a docker_networks=(
 	nginx
 )
 
+do_one_compose() {
+	docker-compose "$@" build --pull
+	docker-compose "$@" pull --ignore-pull-failures
+	docker-compose "$@" up -d
+}
+
 /srv/localdev/scripts/configure_docker_daemons
 /srv/localdev/scripts/create_ssl_cert_key registry.local
 /srv/localdev/scripts/create_ssl_cert_key registry-mirror.local
 
 /srv/localdev/scripts/create_docker_networks "${docker_networks[@]}"
-docker-compose -f /srv/localdev/images/squid/docker-compose.yml build
-docker-compose -f /srv/localdev/images/squid/docker-compose.yml up -d
+do_one_compose -f /srv/localdev/images/squid/docker-compose.yml
 
 export http_proxy=http://http-proxy:3128
 
-docker-compose -f /srv/localdev/images/nexus3/docker-compose.yml build
-docker-compose -f /srv/localdev/images/nexus3/docker-compose.yml up -d
+do_one_compose -f /srv/localdev/images/nexus3/docker-compose.yml
 
-docker-compose -f /srv/localdev/subs/nginx-proxy/docker-compose.yml build
-docker-compose -f /srv/localdev/subs/nginx-proxy/docker-compose.yml up -d
-docker-compose -p email-hub-dev -f /srv/localdev/subs/email-hub/docker-compose.dev.yml build
-docker-compose -p email-hub-dev -f /srv/localdev/subs/email-hub/docker-compose.dev.yml up -d
-docker-compose -p email-hub-prod -f /srv/localdev/subs/email-hub/docker-compose.prod.yml build
-docker-compose -p email-hub-prod -f /srv/localdev/subs/email-hub/docker-compose.prod.yml up -d
+do_one_compose -f /srv/localdev/subs/nginx-proxy/docker-compose.yml
+do_one_compose -p email-hub-dev -f /srv/localdev/subs/email-hub/docker-compose.dev.yml
+do_one_compose -p email-hub-prod -f /srv/localdev/subs/email-hub/docker-compose.prod.yml
 
 echo "Everything has been built and brought online; localdev is ready."
 
