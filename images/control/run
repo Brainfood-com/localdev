@@ -125,7 +125,7 @@ run_tool() {
 		exit 1
 	fi
 
-	declare COMPOSE_PROJECT_NAME="$(extract_project_var COMPOSE_PROJECT_NAME)"
+	declare COMPOSE_PROJECT_NAME="$(extract_project_var COMPOSE_PROJECT_NAME "${MAP_TOP_DIR##*/}")"
 	declare ESCAPED_PROJECT_NAME="$(escape_project_name "$COMPOSE_PROJECT_NAME")"
 
 	declare -a filter_args=(
@@ -166,7 +166,7 @@ compose_helper() {
 extract_project_var() {
 	(
 		eval "$MAP_ENV/.env"
-		eval echo "\$$1"
+		eval echo "\${$1:-\$2}"
 	)
 }
 
