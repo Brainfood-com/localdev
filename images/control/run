@@ -149,9 +149,12 @@ run_tool() {
 	declare target_pwd="${tool_to_target_pwd[$cmd]:-${service_target_pwd[$wanted_service]}}"
 
 	declare working_dir="/"
-	if [[ $target_pwd = relative ]]; then
-		working_dir="/srv/app$RELATIVE_DIR"
-	fi
+	case "$target_pwd" in
+		(relative)
+			working_dir="/srv/app$RELATIVE_DIR";;
+		(image)
+			working_dir="";;
+	esac
 	exec docker exec $t_flag -i -e COLUMNS -e LINES -e TERM -w "$working_dir" -u "$target_user" "$tool_container_id" "$executable" "$@"
 	exit 1
 }
