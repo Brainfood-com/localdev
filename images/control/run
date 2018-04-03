@@ -1,210 +1,220 @@
-#!/bin/bash
+#!/usr/bin/env python
 
-set -e
+from __future__ import print_function
 
-RELATIVE_DIR="${MAP_PWD#$MAP_TOP_DIR}"
-t_flag=
-tty -s && t_flag=-t
+import docker
+import dockerpty
+import json
+import os
+import re
+import shlex
+import sys
+from time import sleep
+import yaml
 
-if [[ $MAP_TERM =~ ^([0-9]*):([0-9]*):(.*)$ ]]; then
-	export COLUMNS=${BASH_REMATCH[1]} LINES=${BASH_REMATCH[2]} TERM=${BASH_REMATCH[3]}
-fi
+map_term = os.environ['MAP_TERM']
 
-#echo "COLUMNS=$COLUMNS LINES=$LINES"
-project_container_id=
+matched = re.match('^([0-9]*):([0-9]*):(.*)$', map_term)
+if matched:
+    os.environ['COLUMNS'] = matched.group(1)
+    os.environ['LINES'] = matched.group(2)
+    os.environ['TERM'] = matched.group(3)
 
-start_project() {
-	[[ $project_container_id ]] && return
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
-	declare -A labels=(
-		[com.brainfood.docker.localdev.top_dir]="$MAP_TOP_DIR"
-		[com.brainfood.docker.localdev.map_user]="$MAP_USER"
-		[com.brainfood.docker.localdev.map_umask]="$MAP_UMASK"
-	)
+def escape_compose_name(value):
+    return re.sub('[^a-zA-Z0-9]+', '', value)
 
-	declare -a filter_args=()
-	for label in "${!labels[@]}"; do
-		filter_args+=("--filter" "label=$label=${labels[$label]}")
-	done
+service_label_re = re.compile('^com\.brainfood\.docker\.localdev\.(target_pwd|target_user)$')
+tool_label_re = re.compile('com\.brainfood\.docker\.localdev\.tool\.([^.]+)(?:\.(target_pwd|target_user))?$')
+shell_var_re = re.compile('^([^=]+)=(.*)$')
+class Controller():
+    def __init__(self):
+        self._docker = None
+        self._project_container = None
+        self._environment_parsed = False
 
-	declare container_id_and_image_hash="$(docker container ls -a "${filter_args[@]}" --format '{{print .ID}} {{print .Image}} {{print .Networks}}')"
+        self._map_umask = os.environ['MAP_UMASK']
+        self._map_pwd = os.environ['MAP_PWD']
+        self._map_top_dir = os.environ['MAP_TOP_DIR']
+        self._map_user = os.environ['MAP_USER']
+        self._relative_dir = self._map_pwd[len(self._map_top_dir):]
 
-	if [[ $container_id_and_image_hash =~ ^([^ ]+)' '([^ ]+)' '(.*)$ ]]; then
-		declare container_id="${BASH_REMATCH[1]}"
-		declare container_image_hash="${BASH_REMATCH[2]}"
-		declare container_networks_raw="${BASH_REMATCH[3]//,/ }"
-		if [[ $container_image_hash != localdev ]]; then
-			docker rm -f "$container_id" 1>/dev/null
-			container_id=
-		else
-			declare -A container_networks
-			declare network
-			for network in $container_networks_raw; do
-				container_networks[$network]=1
-			done
-			if [[ -z ${container_networks[localdev_default]} ]]; then
-				docker rm -f "$container_id" 1>/dev/null
-				container_id=
-			fi
-		fi
-	fi
+        self.services = {}
+        self.tools = {}
+        self.vars = {}
 
-	if ! [[ $container_id ]]; then
-		declare -a create_args=(
-			--network localdev_default
-			-v "$MAP_TOP_DIR:$MAP_TOP_DIR"
-			-v "/var/run/docker.sock:/var/run/docker.sock"
-		)
-		declare label
-		for label in "${!labels[@]}"; do
-			create_args+=("--label" "$label=${labels[$label]}")
-		done
+    def docker(self):
+        if not self._docker:
+            self._docker = docker.from_env()
+        return self._docker
 
-		container_id="$(docker create "${create_args[@]}" localdev)"
-		if ! [[ $container_id ]]; then
-			echo "Couldn't create new container!" 1>&2
-			exit 1
-		fi
-	fi
+    def parse_yml(self, compose_yml):
+        compose_data = yaml.load(compose_yml)
 
-	docker start "$container_id" 1>/dev/null
-	project_container_id="$container_id"
-}
+        for service_name, service_config in compose_data['services'].items():
+            if 'labels' in service_config:
+                self.services[service_name] = service_tool_config = {'target_pwd': '', 'target_user': ''}
+                tool_services = {}
+                for label_str in service_config['labels']:
+                    label, value = (label_str.split('=', 2) + [None])[:2]
 
-run_tool() {
-	declare cmd="$1"
-	shift
-	declare service_name label value tool_label tool
-	declare -A service_target_user service_target_pwd tool_to_service tool_to_executable tool_to_target_user tool_to_target_pwd
-	while read line; do
-		# {"key":"'postgresql'","value":["'com.brainfood.docker.localdev.target_user=postgres'","'com.brainfood.docker.localdev.tool.pg_dump'","'com.brainfood.docker.localdev.tool.psql'"]}
-		[[ $line =~ ^'{"key":"'([^\"]+)'","value":['(.*) ]] || continue
-		service_name="${BASH_REMATCH[1]}"
-		line="${BASH_REMATCH[2]}"
-		while [[ $line =~ \"([^\"=]+)(=([^\"]+))?\",?(.*) ]]; do
-			label="${BASH_REMATCH[1]}"
-			value="${BASH_REMATCH[3]}"
-			line="${BASH_REMATCH[4]}"
-			case "$label" in
-				(com.brainfood.docker.localdev.target_user)
-					service_target_user[$service_name]="$value"
-					;;
-				(com.brainfood.docker.localdev.target_pwd)
-					service_target_pwd[$service_name]="$value"
-					;;
-				(com.brainfood.docker.localdev.tool.*)
-					tool_label="${label#com.brainfood.docker.localdev.tool.}"
-					case "$tool_label" in
-						(*.target_user)
-							tool_to_target_user[${tool_label%.target_user}]="$value"
-							:
-							;;
-						(*.target_pwd)
-							tool_to_target_pwd[${tool_label%.target_pwd}]="$value"
-							;;
-						(*)
-							tool_to_service[$tool_label]="$service_name"
-							tool_to_executable[$tool_label]="$value"
-							;;
-					esac
-			esac
-		done
-	done < <(
-		#(docker cp --archive=false "$project_container_id:$MAP_TOP_DIR/docker-compose.dev.yml" -) | \
-		#tar -Oxf - docker-compose.dev.yml | \
-		echo "$MAP_DEV_YML" |
-		(/srv/localdev/scripts/yaml2json) | \
-		jq -c '.services | with_entries(select(.value | has("labels")) | .value = (.value.labels)) | to_entries[]'
-		#jq -c '.services | with_entries(select(.value | has("labels")) | .value = (.value.labels | map(@sh)) | .key = (.key | @sh)) | to_entries[]'
-	)
+                    service_match = service_label_re.match(label)
+                    tool_match = tool_label_re.match(label)
+                    if service_match:
+                        service_tool_config[service_match.group(1)] = value
+                    elif tool_match:
+                        tool_name = tool_match.group(1)
+                        tool_config = tool_services.setdefault(tool_name, {'executable': tool_name, 'name': tool_name})
+                        tool_config['service_name'] = service_name
+                        if tool_match.group(2):
+                            tool_config[tool_match.group(2)] = value
+                        elif value:
+                            tool_config['executable'] = value
 
-	declare wanted_service="${tool_to_service[$cmd]}"
+                for tool_name, tool_config in tool_services.items():
+                    self.tools[tool_name] = tool_config
 
-	if [[ -z $wanted_service ]]; then
-		echo "Could not find tool: $cmd" 1>&2
-		exit 1
-	fi
+    def parse_env(self, env):
+        for line in shlex.split(env, True):
+            shell_var_match = shell_var_re.match(line)
+            if shell_var_match:
+                self.vars[shell_var_match.group(1)] = shell_var_match.group(2)
 
-	declare COMPOSE_PROJECT_NAME="$(extract_project_var COMPOSE_PROJECT_NAME "${MAP_TOP_DIR##*/}")"
-	declare ESCAPED_PROJECT_NAME="$(escape_project_name "$COMPOSE_PROJECT_NAME")"
+    def find_container(self, labels):
+        label_filters = []
+        for label, value in labels.items():
+            if value:
+                label_filters.append(label + '=' + value)
+            else:
+                label_filters.append(label)
 
-	declare -a filter_args=(
-		--filter "label=com.docker.compose.project=$ESCAPED_PROJECT_NAME"
-		--filter "label=com.brainfood.docker.localdev.tool.$cmd"
-	)
+        found = self.docker().containers.list(all = True, filters = {'label': label_filters}, sparse = True)
+        while len(found) > 1:
+            found[0].remove(force = True)
+            found.pop(0)
 
-	declare tool_container_id="$(docker container ls -a "${filter_args[@]}" --format '{{print .ID}}')"
-	if [[ -z $tool_container_id ]]; then
-		compose_helper dev up -d "$wanted_service"
-		sleep 1
-		tool_container_id="$(docker container ls -a "${filter_args[@]}" --format '{{print .ID}}')"
-	fi
-	if [[ -z $tool_container_id ]]; then
-		echo "Could not find tool: $cmd" 1>&2
-		exit 1
-	fi
-	tool_container_id="${tool_container_id%% *}"
-	declare executable="${tool_to_executable[$cmd]:-$cmd}"
-	declare target_user="${tool_to_target_user[$cmd]:-${service_target_user[$wanted_service]}}"
-	declare target_pwd="${tool_to_target_pwd[$cmd]:-${service_target_pwd[$wanted_service]}}"
+        if len(found) == 1:
+            return found[0]
 
-	declare working_dir="/"
-	case "$target_pwd" in
-		(relative)
-			working_dir="/srv/app$RELATIVE_DIR";;
-		(image)
-			working_dir="";;
-	esac
-	exec docker exec $t_flag -i -e COLUMNS -e LINES -e TERM -w "$working_dir" -u "$target_user" "$tool_container_id" "$executable" "$@"
-	exit 1
-}
+    @property
+    def project_container(self):
+        if self._project_container: return self._project_container
 
-compose_helper() {
-	declare cmd="$1"
-	shift
-	start_project
-	docker exec $t_flag -i -e COLUMNS -e LINES -e TERM -w "$MAP_TOP_DIR" "$project_container_id" docker-compose -f "docker-compose.$cmd.yml" "$@"
-}
+        labels = {
+            'com.brainfood.docker.localdev.top_dir': self._map_top_dir,
+            'com.brainfood.docker.localdev.map_user': self._map_user,
+            'com.brainfood.docker.localdev.map_umask': self._map_umask,
+        }
 
-extract_project_var() {
-	(
-		eval "$MAP_ENV/.env"
-		eval echo "\${$1:-\$2}"
-	)
-}
+        container = self.find_container(labels)
+        if container:
+            container_image_hash = container.attrs['Image']
 
-escape_project_name() {
-	declare token="$1"
-	while [[ $token =~ ^(.*)[^a-zA-Z0-9]+(.*)$ ]]; do
-		token="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
-	done
-	echo "$token"
-}
+            if container.attrs['Image'] != 'localdev':
+                container.remove(force = True)
+            elif not 'localdev_default' in container.attrs['NetworkSettings']['Networks']:
+                container.remove(force = True)
+            else:
+                self._project_container = container
+                return container
 
-escape_project_service() {
-	declare token="$1"
-	while [[ $token =~ ^(.*)[^a-zA-Z0-9-]+(.*)$ ]]; do
-		token="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
-	done
-	echo "$token"
-}
+        new_container_config = {
+            'labels': labels,
+            'network': 'localdev_default',
+            'volumes': {
+                self._map_top_dir: {'bind': self._map_top_dir, 'mode': 'rw'},
+                '/var/run/docker.sock': {'bind': '/var/run/docker.sock', 'mode': 'rw'},
+            },
+        }
 
-cmd="$1"
-shift || cmd=help
+        new_container = self.docker().containers.create('localdev', detach = True, **new_container_config)
+        new_container.start()
+        self._project_container = new_container
+        return new_container
 
-case "$cmd" in
-	(help)
-		echo "You need help"
-		;;
-	(exec)
-		[[ $# -eq 0 ]] && set -- bash
-		start_project
-		docker exec $t_flag -i -e COLUMNS -e LINES -e TERM "$project_container_id" "$@"
-		;;
-	(dev|prod)
-		compose_helper "$cmd" "$@"
-		;;
-	(*)
-		run_tool "$cmd" "$@"
-esac
+    def parse_environment(self):
+        if not self._environment_parsed:
+            controller.parse_yml(os.environ.get('MAP_DEV_YML', ''))
+            controller.parse_env(os.environ.get('MAP_ENV', ''))
+            _environment_parsed = True
 
+    def exec_helper(self, container, workdir, user, command):
+        isatty = sys.stdout.isatty()
+        api = self.docker().api
+        result = api.exec_create(
+            container.id,
+            command,
+            stdin = True,
+            tty = isatty,
+            user = user,
+            workdir = workdir,
+            environment = {
+                'COLUMNS': os.environ.get('COLUMNS'),
+                'LINES': os.environ.get('LINES'),
+                'TERM': os.environ.get('TERM'),
+            },
+        )
+        dockerpty.start_exec(api, result['Id'])
+        return api.exec_inspect(result['Id'])
+
+    def run_tool(self, cmd, args):
+        self.parse_environment()
+
+        if not cmd in self.tools:
+            eprint('Could not find tool: %s' % (cmd))
+            sys.exit(1)
+
+        tool_config = self.tools[cmd]
+        service_config = self.services[tool_config['service_name']]
+        escaped_project_name = escape_compose_name(self.vars['COMPOSE_PROJECT_NAME'])
+
+        labels = {
+            'com.docker.compose.project' : escaped_project_name,
+            'com.brainfood.docker.localdev.tool.' + cmd: None,
+        }
+        tool_container = self.find_container(labels)
+        if not tool_container:
+            self.compose_helper('dev', ['up', '-d', tool_config['service_name']])
+            sleep(1)
+            tool_container = self.find_container(labels)
+
+        if not tool_container:
+            eprint('Could not find tool: %s' % (cmd))
+            sys.exit(1)
+
+        executable = tool_config.get('executable')
+        target_pwd = tool_config.get('target_pwd', service_config.get('target_pwd', ''))
+        target_user = tool_config.get('target_user', service_config.get('target_user', ''))
+
+        if target_pwd == 'relative':
+            working_dir = '/srv/app' + self._relative_dir
+        elif target_pwd == 'image':
+            working_dir = ''
+        else:
+            working_dir = '/'
+
+        return self.exec_helper(tool_container, working_dir, target_user, [executable] + args)
+
+    def compose_helper(self, which, args):
+        return self.exec_helper(self.project_container, self._map_top_dir, None, ['docker-compose', '-f', 'docker-compose.' + which + '.yml'] + args)
+
+    def cmd(self, command):
+        cmd = command.pop(0)
+        if not cmd or cmd == 'help':
+            print('You need help')
+        elif cmd == 'exec':
+            if len(command) == 0:
+                command.append('bash')
+            return self.exec_helper(self.project_container, '/', None, command)
+            pass
+        elif cmd == 'dev' or cmd == 'prod':
+            return self.compose_helper(cmd, command)
+        else:
+            return self.run_tool(cmd, command)
+
+controller = Controller()
+
+command = sys.argv[1:]
+sys.exit(controller.cmd(command)['ExitCode'])

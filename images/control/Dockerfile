@@ -2,17 +2,34 @@ FROM docker:stable-dind as src-docker
 
 FROM docker/compose:1.20.0 as src-compose
 
-FROM debian:stretch
-
-COPY --from=src-compose /usr/local/bin/docker-compose /usr/local/bin/docker-compose
-COPY --from=src-docker /usr/local/bin/docker /usr/local/bin/docker
+FROM debian:stretch as localdev-base
 
 RUN export DEBIAN_FRONTEND=noninteractive \
 	&& apt-get update \
-	&& apt-get install -y openssl wget libltdl7 python python-yaml gosu jq \
+	&& apt-get install -y openssl wget libltdl7 python python-yaml gosu jq python-six \
 	&& apt-get clean \
-	&& addgroup --gid 995 localgroup && adduser --uid 995 --disabled-password --ingroup localgroup --gecos '' localdev \
 	&& find /var/cache/apt /var/lib/apt -type f -delete \
+	&& true
+
+FROM localdev-base as build-python
+
+RUN export DEBIAN_FRONTEND=noninteractive \
+	&& apt-get update \
+	&& apt-get install -y python-pip git \
+	&& apt-get clean \
+	&& pip install 'git+https://github.com/deanrock/dockerpty.git#new-docker-library' docker \
+	&& apt-get -y remove git python-pip \
+	&& apt-get -y autoremove \
+	&& find /var/cache/apt /var/lib/apt -type f -delete \
+	&& true
+
+FROM localdev-base
+
+COPY --from=build-python /usr/local/lib/python2.7/ /usr/local/lib/python2.7/
+COPY --from=src-compose /usr/local/bin/docker-compose /usr/local/bin/docker-compose
+COPY --from=src-docker /usr/local/bin/docker /usr/local/bin/docker
+
+RUN addgroup --gid 995 localgroup && adduser --uid 995 --disabled-password --ingroup localgroup --gecos '' localdev \
 	&& true
 
 COPY images/control/adjust-user /srv/localdev/scripts/adjust-user
