@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 
+from collections import defaultdict
 import docker
 import dockerpty
 import json
@@ -48,6 +49,11 @@ class Service(object):
 class Tool(object):
     def __init__(self, name):
         self.name = name
+
+class InvalidTool(Tool):
+    def run(self, controller, cmd, args):
+        eprint('Could not find tool: %s' % (cmd))
+        sys.exit(1)
 
 class ServiceTool(Tool):
     def __init__(self, service, name):
@@ -115,7 +121,7 @@ class Controller():
         self._relative_dir = self._map_pwd[len(self._map_top_dir):]
 
         self.services = {}
-        self.tools = {}
+        self.tools = defaultdict(lambda: InvalidTool('missing'))
         self.vars = {}
 
     def docker(self):
@@ -221,12 +227,7 @@ class Controller():
     def run_tool(self, cmd, args):
         self.parse_environment()
 
-        if not cmd in self.tools:
-            eprint('Could not find tool: %s' % (cmd))
-            sys.exit(1)
-
-        tool = self.tools[cmd]
-        return tool.run(self, cmd, args)
+        return self.tools[cmd].run(self, cmd, args)
 
     def compose_helper(self, which, args):
         return self.exec_helper(self.project_container, self._map_top_dir, None, ['docker-compose', '-f', 'docker-compose.' + which + '.yml'] + args)
