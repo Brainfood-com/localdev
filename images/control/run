@@ -26,8 +26,51 @@ def eprint(*args, **kwargs):
 def escape_compose_name(value):
     return re.sub('[^a-zA-Z0-9]+', '', value)
 
-service_label_re = re.compile('^com\.brainfood\.docker\.localdev\.(target_pwd|target_user)$')
-tool_label_re = re.compile('com\.brainfood\.docker\.localdev\.tool\.([^.]+)(?:\.(target_pwd|target_user))?$')
+service_label_re = re.compile('^com\.brainfood\.docker\.localdev\.(target_pwd|target_user)(?:=(.*))?$')
+tool_label_re = re.compile('com\.brainfood\.docker\.localdev\.tool\.([^=.]+)(?:\.(target_pwd|target_user))?(?:=(.*))?$')
+class Service(object):
+    def __init__(self, name):
+        self.name = name
+        self.target_pwd = None
+        self.target_user = None
+        self.tools = {}
+
+    def absorbLabel(self, label):
+        service_label_match = service_label_re.match(label)
+        tool_label_match = tool_label_re.match(label)
+        if service_label_match:
+            self.__dict__[service_label_match.group(1)] = service_label_match.group(2)
+        elif tool_label_match:
+            tool_name = tool_label_match.group(1)
+            tool = self.tools.setdefault(tool_name, ServiceTool(self, tool_name))
+            tool.absorbLabel(tool_label_match.group(2), tool_label_match.group(3))
+
+class Tool(object):
+    def __init__(self, name):
+        self.name = name
+
+class ServiceTool(Tool):
+    def __init__(self, service, name):
+        super(ServiceTool, self).__init__(name)
+        self.service = service
+        self._target_pwd = None
+        self._target_user = None
+        self.executable = name
+
+    @property
+    def target_pwd(self):
+        return self._target_pwd or self.service.target_pwd
+
+    @property
+    def target_user(self):
+        return self._target_user or self.service.target_user
+
+    def absorbLabel(self, label, value):
+        if label == 'target_pwd' or label == 'target_user':
+            self.__dict__['_' + label] = value
+        elif label is None and value:
+            self.executable = value
+
 shell_var_re = re.compile('^([^=]+)=(.*)$')
 class Controller():
     def __init__(self):
@@ -55,26 +98,12 @@ class Controller():
 
         for service_name, service_config in compose_data['services'].items():
             if 'labels' in service_config:
-                self.services[service_name] = service_tool_config = {'target_pwd': '', 'target_user': ''}
-                tool_services = {}
+                service = self.services.setdefault(service_name, Service(service_name))
                 for label_str in service_config['labels']:
-                    label, value = (label_str.split('=', 2) + [None])[:2]
+                    service.absorbLabel(label_str)
 
-                    service_match = service_label_re.match(label)
-                    tool_match = tool_label_re.match(label)
-                    if service_match:
-                        service_tool_config[service_match.group(1)] = value
-                    elif tool_match:
-                        tool_name = tool_match.group(1)
-                        tool_config = tool_services.setdefault(tool_name, {'executable': tool_name, 'name': tool_name})
-                        tool_config['service_name'] = service_name
-                        if tool_match.group(2):
-                            tool_config[tool_match.group(2)] = value
-                        elif value:
-                            tool_config['executable'] = value
-
-                for tool_name, tool_config in tool_services.items():
-                    self.tools[tool_name] = tool_config
+                for tool_name, tool in service.tools.items():
+                    self.tools[tool_name] = tool
 
     def parse_env(self, env):
         for line in shlex.split(env, True):
@@ -166,8 +195,7 @@ class Controller():
             eprint('Could not find tool: %s' % (cmd))
             sys.exit(1)
 
-        tool_config = self.tools[cmd]
-        service_config = self.services[tool_config['service_name']]
+        tool = self.tools[cmd]
         escaped_project_name = escape_compose_name(self.vars['COMPOSE_PROJECT_NAME'])
 
         labels = {
@@ -176,7 +204,7 @@ class Controller():
         }
         tool_container = self.find_container(labels)
         if not tool_container:
-            self.compose_helper('dev', ['up', '-d', tool_config['service_name']])
+            self.compose_helper('dev', ['up', '-d', tool.service.name])
             sleep(1)
             tool_container = self.find_container(labels)
 
@@ -184,9 +212,9 @@ class Controller():
             eprint('Could not find tool: %s' % (cmd))
             sys.exit(1)
 
-        executable = tool_config.get('executable')
-        target_pwd = tool_config.get('target_pwd', service_config.get('target_pwd', ''))
-        target_user = tool_config.get('target_user', service_config.get('target_user', ''))
+        executable = tool.executable
+        target_pwd = tool.target_pwd
+        target_user = tool.target_user
 
         if target_pwd == 'relative':
             working_dir = '/srv/app' + self._relative_dir
