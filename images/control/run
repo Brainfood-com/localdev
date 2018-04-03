@@ -71,6 +71,36 @@ class ServiceTool(Tool):
         elif label is None and value:
             self.executable = value
 
+    def run(self, controller, cmd, args):
+        escaped_project_name = escape_compose_name(controller.vars['COMPOSE_PROJECT_NAME'])
+
+        labels = {
+            'com.docker.compose.project' : escaped_project_name,
+            'com.brainfood.docker.localdev.tool.' + cmd: None,
+        }
+        tool_container = controller.find_container(labels)
+        if not tool_container:
+            controller.compose_helper('dev', ['up', '-d', self.service.name])
+            sleep(1)
+            tool_container = controller.find_container(labels)
+
+        if not tool_container:
+            eprint('Could not find tool: %s' % (cmd))
+            sys.exit(1)
+
+        executable = self.executable
+        target_pwd = self.target_pwd
+        target_user = self.target_user
+
+        if target_pwd == 'relative':
+            working_dir = '/srv/app' + controller._relative_dir
+        elif target_pwd == 'image':
+            working_dir = ''
+        else:
+            working_dir = '/'
+
+        return controller.exec_helper(tool_container, working_dir, target_user, [executable] + args)
+
 shell_var_re = re.compile('^([^=]+)=(.*)$')
 class Controller():
     def __init__(self):
@@ -196,34 +226,7 @@ class Controller():
             sys.exit(1)
 
         tool = self.tools[cmd]
-        escaped_project_name = escape_compose_name(self.vars['COMPOSE_PROJECT_NAME'])
-
-        labels = {
-            'com.docker.compose.project' : escaped_project_name,
-            'com.brainfood.docker.localdev.tool.' + cmd: None,
-        }
-        tool_container = self.find_container(labels)
-        if not tool_container:
-            self.compose_helper('dev', ['up', '-d', tool.service.name])
-            sleep(1)
-            tool_container = self.find_container(labels)
-
-        if not tool_container:
-            eprint('Could not find tool: %s' % (cmd))
-            sys.exit(1)
-
-        executable = tool.executable
-        target_pwd = tool.target_pwd
-        target_user = tool.target_user
-
-        if target_pwd == 'relative':
-            working_dir = '/srv/app' + self._relative_dir
-        elif target_pwd == 'image':
-            working_dir = ''
-        else:
-            working_dir = '/'
-
-        return self.exec_helper(tool_container, working_dir, target_user, [executable] + args)
+        return tool.run(self, cmd, args)
 
     def compose_helper(self, which, args):
         return self.exec_helper(self.project_container, self._map_top_dir, None, ['docker-compose', '-f', 'docker-compose.' + which + '.yml'] + args)
