@@ -52,6 +52,8 @@ class Tool(object):
 
 class ParseEnvironmentTool(Tool):
     def run(self, controller, cmd, args):
+        if cmd is None:
+            controller.run_tool('help', args)
         controller.parse_environment()
         controller.tools.default_factory = lambda: InvalidTool('missing')
         return controller.run_tool(cmd, args)
@@ -65,16 +67,61 @@ class ComposeTool(Tool):
     def run(self, controller, cmd, args):
         return controller.compose_helper(cmd, args)
 
+    def help(self, controller, cmd):
+        return ['Call "docker-compose -f docker-compose.${cmd}.yml" ...']
+
 class ExecTool(Tool):
     def run(self, controller, cmd, args):
         if len(args) == 0:
             args.append('bash')
         return controller.exec_helper(controller.project_container, '/', None, args)
 
+    def help(self, controller, cmd):
+        return ['Execute a command in the control container for this project.']
+
 class HelpTool(Tool):
     def run(self, controller, cmd, args):
-        print('You need help')
+        controller.parse_environment()
+        found_tools_by_tool = {}
+        print('The following commands are available:')
+        print()
+        for tool_name, tool in controller.tools.items():
+            found_tool = found_tools_by_tool.setdefault(tool, {'tool': tool, 'names': []})
+            found_tool['names'].append(tool_name)
+
+        max_name_length = 0
+        for found_tool in found_tools_by_tool.values():
+            names = found_tool['names']
+            found_tool.pop('names')
+            names.sort()
+            found_tool['name'] = name = names.pop(0)
+            if len(name) > max_name_length:
+                max_name_length = len(name)
+            found_tool['help'] = help = found_tool['tool'].help(controller, name)
+            if len(names):
+                help.append('Aliases: ' + ', '.join(names))
+
+        found_tools = found_tools_by_tool.values()
+        found_tools.sort(key=lambda found_tool: found_tool['name'])
+        width = os.environ.get('COLUMNS', 80)
+        leader = ' ' * (8 + max_name_length + 1)
+        for found_tool in found_tools:
+            name = found_tool['name']
+            help = found_tool['help']
+            line_to_print = '        %s%s ' % (name, ' ' * (max_name_length - len(name)))
+            while len(help):
+                help_words = help.pop(0).split()
+                while len(help_words):
+                    while len(help_words) and len(line_to_print) + 1 + len(help_words[0]) < width:
+                        line_to_print = line_to_print + ' ' + help_words.pop(0)
+                    if len(line_to_print):
+                        print(line_to_print)
+                    line_to_print = leader
+
         return {'ExitCode': 0}
+
+    def help(self, controller, cmd):
+        return ['Show what tools are available.']
 
 class ServiceTool(Tool):
     def __init__(self, service, name):
@@ -128,6 +175,9 @@ class ServiceTool(Tool):
 
         return controller.exec_helper(tool_container, working_dir, target_user, [executable] + args)
 
+    def help(self, controller, cmd):
+        return ['Run the command in the service.']
+
 shell_var_re = re.compile('^([^=]+)=(.*)$')
 class Controller():
     def __init__(self):
@@ -145,7 +195,7 @@ class Controller():
         self.tools = defaultdict(lambda: ParseEnvironmentTool('parse-environment'))
         self.tools['dev'] = self.tools['prod'] = ComposeTool('compose')
         self.tools['exec'] = ExecTool('exec')
-        self.tools['help'] = self.tools[None] = HelpTool('help')
+        self.tools['help'] = HelpTool('help')
         self.vars = {}
 
     def docker(self):
