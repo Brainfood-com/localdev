@@ -16,6 +16,8 @@ services:
   control:
     image: localdev
     build:
+      args:
+        - http_proxy
       context: .
       dockerfile: images/control/Dockerfile
     restart: on-failure
