@@ -2,7 +2,7 @@
 
 from __future__ import print_function
 
-from collections import defaultdict
+from collections import defaultdict, MutableMapping
 import docker
 import dockerpty
 import json
@@ -26,6 +26,99 @@ def eprint(*args, **kwargs):
 
 def escape_compose_name(value):
     return re.sub('[^a-zA-Z0-9]+', '', value)
+
+line_sep_re = re.compile(r'(\r\n?|\n)')
+comment_re = re.compile(r'^\s*#.*$')
+key_value_re = re.compile(r'(?P<leading>\s*)(?P<key>[^=]+)(?:=(?P<value>.*))?$')
+class EnvFile(MutableMapping):
+    def __init__(self, project, data):
+        self._project = project
+
+        tokens = line_sep_re.split(data)
+        is_sep = False
+        tokens = []
+        keys_to_token = {}
+        for token in line_sep_re.split(data):
+            if is_sep:
+                token = {'type': 'SEP', 'token': token}
+            else:
+                comment_match = comment_re.match(token)
+                key_value_match = key_value_re.match(token)
+                if comment_match:
+                    token = {'type': 'COMMENT', 'token': token}
+                elif key_value_match:
+                    groups = key_value_match.groupdict('')
+                    token = {'type': 'VAR', 'deleted': False}
+                    token.update(groups)
+                    keys_to_token[groups['key']] = token
+                else:
+                    token = {'type': 'UNKNOWN', 'token': token}
+
+            is_sep = not is_sep
+            tokens.append(token)
+        self._tokens = tokens
+        self._keys_to_token = keys_to_token
+        self._deleted = {}
+
+    def __contains__(self, key):
+        return key in self._keys_to_token
+
+    def __len__(self):
+        return len(self._keys_to_token)
+
+    def __getitem__(self, key):
+        return self._keys_to_token[key]['value']
+
+    def __setitem__(self, key, value):
+        # TODO: validate allowed key/value characters
+        if key in self._keys_to_token:
+            token = self._keys_to_token[key]
+        elif key in self._deleted:
+            token = self._deleted[key]
+            token['deleted'] = False
+            del self._deleted[key]
+            self._keys_to_token[key] = token
+        else:
+            if self._tokens[-1]['type'] != 'SEP':
+                self._tokens.append({'type': 'SEP', 'token': "\n"})
+
+            token = {'type': 'VAR', 'deleted': False, 'leading': '', 'key': key}
+            self._tokens.append(token)
+            self._keys_to_token[key] = token
+        token['value'] = value
+
+    def __delitem__(self, key):
+        token = self._deleted[key] = self._keys_to_token[key]
+        token['deleted'] = True
+        del self._keys_to_token[key]
+
+    def __iter__(self):
+        return iter(self._keys_to_token)
+
+    iterkeys = __iter__
+
+    def keys(self):
+        return self._keys_to_token.keys()
+
+    def __str__(self):
+        output = []
+        delete_next = False
+        for token in self._tokens:
+            token_type = token['type']
+            if token_type != 'VAR':
+                if delete_next:
+                    delete_next = False
+                else:
+                    output.append(token['token'])
+            elif token['deleted']:
+                delete_next = True
+            else:
+                output.append(token['leading'])
+                output.append(token['key'])
+                if token['value'] is not None:
+                    output.append('=')
+                    output.append(token['value'])
+        return ''.join(output)
 
 class InvalidArgsException(Exception):
     pass
@@ -198,7 +291,7 @@ class ProjectContainerConfig(ContainerConfig):
             workdir = '/srv/app' + relative_dir
 
         controller = project.controller
-        escaped_project_name = escape_compose_name(project.vars['COMPOSE_PROJECT_NAME'])
+        escaped_project_name = escape_compose_name(project.env['COMPOSE_PROJECT_NAME'])
 
         labels = {
             'com.docker.compose.project' : escaped_project_name,
@@ -258,7 +351,7 @@ class Project(object):
         self.top_dir = top_dir
         self._compose = None
         self._container = None
-        self._vars = {}
+        self._env = None
         self._environment_parsed = False
 
     @property
@@ -267,9 +360,9 @@ class Project(object):
         return self._compose
 
     @property
-    def vars(self):
+    def env(self):
         self.parse_environment()
-        return self._vars
+        return self._env
 
     @property
     def tools(self):
@@ -289,10 +382,7 @@ class Project(object):
         self._compose = ComposeYml(self, data)
 
         data = self.get_mapped_file_data('.env', 'MAP_ENV')
-        for line in shlex.split(data, True):
-            shell_var_match = shell_var_re.match(line)
-            if shell_var_match:
-                self._vars[shell_var_match.group(1)] = shell_var_match.group(2)
+        self._env = EnvFile(self, data)
 
         self._environment_parsed = True
 
@@ -347,7 +437,7 @@ class Project(object):
 
 class SystemContainerConfig(ContainerConfig):
     def __init__(self, controller, container):
-        super(SystemContainerConfig, self).__init__('com.brainfood.docker.localdev.sub.', controller)
+        super(SystemContainerConfig, self).__init__('com.brainfood.docker.localdev.sub.')
         self.controller = controller
         self.container = container
         for label, value in container.attrs['Labels'].items():
@@ -376,7 +466,7 @@ class System(object):
             'com.brainfood.docker.localdev.sub': None,
         }
         for container in controller.find_containers(labels):
-            config = SystemToolContainerConfig(controller, container)
+            config = SystemContainerConfig(controller, container)
             for name, tool in config.tools.items():
                 self._tools[name] = tool
 
