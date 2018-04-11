@@ -21,6 +21,8 @@ services:
       args:
         - http_proxy
       context: .
+    environment:
+      maximum_object_size: 1G
     logging:
       <<: *_logging
     networks:
