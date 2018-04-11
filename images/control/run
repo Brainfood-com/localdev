@@ -72,7 +72,7 @@ class ExecTool(ControllerTool):
     def run(self, cmd, args):
         if len(args) == 0:
             args.append('bash')
-        return self.controller.exec_helper(container = self.controller.project_container, workdir = '/', command = args)
+        return self.controller.project.run(workdir = '/', command = args)
 
     def help(self, cmd):
         return ['Execute a command in the control container for this project.']
@@ -261,6 +261,9 @@ class Project(object):
         container.start()
         self._container = container
         return container
+
+    def run(self, command = None, workdir = os.environ['MAP_PWD']):
+        return self.controller.exec_helper(self.container, workdir = workdir, command = command)
 
 class Controller():
     def __init__(self):
