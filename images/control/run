@@ -30,12 +30,16 @@ def escape_compose_name(value):
 service_label_re = re.compile('^com\.brainfood\.docker\.localdev\.(target_pwd|target_user)(?:=(.*))?$')
 tool_label_re = re.compile('com\.brainfood\.docker\.localdev\.tool\.([^=.]+)(?:\.(target_pwd|target_user))?(?:=(.*))?$')
 class Service(object):
-    def __init__(self, name, project):
+    def __init__(self, name, project, config):
         self.name = name
         self.project = project
         self.target_pwd = None
         self.target_user = None
         self.tools = {}
+
+        if 'labels' in config:
+            for label_str in config['labels']:
+                self.absorbLabel(label_str)
 
     def absorbLabel(self, label):
         service_label_match = service_label_re.match(label)
@@ -178,21 +182,34 @@ class ServiceTool(Tool):
     def help(self, cmd):
         return ['Run the command in the service.']
 
+class ComposeYml(object):
+    def __init__(self, project, data):
+
+        self.services = {}
+        self.tools = {}
+
+        compose_structure = yaml.load(data)
+
+        for service_name, service_config in compose_structure['services'].items():
+            service = self.services.setdefault(service_name, Service(service_name, project, service_config))
+
+            for tool_name, tool in service.tools.items():
+                self.tools[tool_name] = tool
+
 shell_var_re = re.compile('^([^=]+)=(.*)$')
 class Project(object):
     def __init__(self, controller, top_dir):
         self.controller = controller
         self.top_dir = top_dir
+        self._compose = None
         self._container = None
-        self._services = {}
-        self._tools = {}
         self._vars = {}
         self._environment_parsed = False
 
     @property
-    def services(self):
+    def compose(self):
         self.parse_environment()
-        return self._services
+        return self._compose
 
     @property
     def vars(self):
@@ -201,23 +218,13 @@ class Project(object):
 
     @property
     def tools(self):
-        self.parse_environment()
-        return self._tools
+        return self.compose.tools
 
     def parse_environment(self):
         if self._environment_parsed:
             return
 
-        compose_data = yaml.load(os.environ.get('MAP_DEV_YML', ''))
-
-        for service_name, service_config in compose_data['services'].items():
-            if 'labels' in service_config:
-                service = self._services.setdefault(service_name, Service(service_name, self))
-                for label_str in service_config['labels']:
-                    service.absorbLabel(label_str)
-
-                for tool_name, tool in service.tools.items():
-                    self._tools[tool_name] = tool
+        self._compose = ComposeYml(self, os.environ.get('MAP_DEV_YML', ''))
 
         for line in shlex.split(os.environ.get('MAP_ENV', ''), True):
             shell_var_match = shell_var_re.match(line)
