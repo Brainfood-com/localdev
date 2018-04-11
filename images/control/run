@@ -171,7 +171,8 @@ class ServiceTool(Tool):
         target_user = self.target_user
 
         if target_pwd == 'relative':
-            working_dir = '/srv/app' + controller._relative_dir
+            relative_dir = os.environ['MAP_PWD'][len(project.top_dir):]
+            working_dir = '/srv/app' + relative_dir
         elif target_pwd == 'image':
             working_dir = ''
         else:
@@ -281,9 +282,6 @@ class Controller():
         self._docker = None
 
         self.project = Project(self, os.environ['MAP_TOP_DIR'])
-
-        self._map_pwd = os.environ['MAP_PWD']
-        self._relative_dir = self._map_pwd[len(self.project.top_dir):]
 
         self.tools = {}
         self.tools['dev'] = self.tools['prod'] = ComposeTool('compose', self)
