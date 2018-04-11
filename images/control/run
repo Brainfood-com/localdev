@@ -198,6 +198,7 @@ class Controller():
         self.tools['help'] = HelpTool('help')
         self.vars = {}
 
+    @property
     def docker(self):
         if not self._docker:
             self._docker = docker.from_env()
@@ -229,7 +230,7 @@ class Controller():
             else:
                 label_filters.append(label)
 
-        found = self.docker().containers.list(all = True, filters = {'label': label_filters}, sparse = True)
+        found = self.docker.containers.list(all = True, filters = {'label': label_filters}, sparse = True)
         while len(found) > 1:
             found[0].remove(force = True)
             found.pop(0)
@@ -268,7 +269,7 @@ class Controller():
             },
         }
 
-        new_container = self.docker().containers.create('localdev', detach = True, **new_container_config)
+        new_container = self.docker.containers.create('localdev', detach = True, **new_container_config)
         new_container.start()
         self._project_container = new_container
         return new_container
@@ -281,7 +282,7 @@ class Controller():
 
     def exec_helper(self, container, workdir, user, command):
         isatty = sys.stdout.isatty()
-        api = self.docker().api
+        api = self.docker.api
         result = api.exec_create(
             container.id,
             command,
