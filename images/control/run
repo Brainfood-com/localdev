@@ -67,7 +67,7 @@ class InvalidTool(Tool):
 
 class ComposeTool(Tool):
     def run(self, cmd, args):
-        return self.controller.compose_helper(cmd, args)
+        return self.controller.exec_helper(self.controller.project_container, workdir = self.controller._map_top_dir, command = ['docker-compose', '-f', 'docker-compose.' + cmd + '.yml'] + args)
 
     def help(self, cmd):
         return ['Call "docker-compose -f docker-compose.${cmd}.yml" ...']
@@ -303,9 +303,6 @@ class Controller():
 
     def run_tool(self, cmd, args):
         return self.tools[cmd].run(cmd, args)
-
-    def compose_helper(self, which, args):
-        return self.exec_helper(container = self.project_container, workdir = self._map_top_dir, command = ['docker-compose', '-f', 'docker-compose.' + which + '.yml'] + args)
 
     def cmd(self, command):
         cmd = command.pop(0)
