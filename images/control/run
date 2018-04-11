@@ -239,8 +239,6 @@ class Project(object):
 
         labels = {
             'com.brainfood.docker.localdev.top_dir': self.top_dir,
-            'com.brainfood.docker.localdev.map_user': self.controller._map_user,
-            'com.brainfood.docker.localdev.map_umask': self.controller._map_umask,
         }
 
         container = self.controller.find_container(labels)
@@ -270,7 +268,13 @@ class Project(object):
         return container
 
     def run(self, command = None, workdir = os.environ['MAP_PWD']):
-        return self.controller.exec_helper(self.container, workdir = workdir, command = command)
+        command = ['/srv/localdev/scripts/exec-helper'] + command
+        environment = {
+            'MAP_USER': os.environ['MAP_USER'],
+            'MAP_UMASK': os.environ['MAP_UMASK'],
+        }
+
+        return self.controller.exec_helper(self.container, environment = environment, workdir = workdir, command = command)
 
 class Controller():
     def __init__(self):
@@ -278,9 +282,7 @@ class Controller():
 
         self.project = Project(self, os.environ['MAP_TOP_DIR'])
 
-        self._map_umask = os.environ['MAP_UMASK']
         self._map_pwd = os.environ['MAP_PWD']
-        self._map_user = os.environ['MAP_USER']
         self._relative_dir = self._map_pwd[len(self.project.top_dir):]
 
         self.tools = {}
@@ -310,9 +312,15 @@ class Controller():
         if len(found) == 1:
             return found[0]
 
-    def exec_helper(self, container, workdir = '/', user = None, command = []):
+    def exec_helper(self, container, environment = {}, workdir = '/', user = None, command = []):
         isatty = sys.stdout.isatty()
         api = self.docker.api
+        environment = environment.copy()
+        environment.update({
+            'COLUMNS': os.environ.get('COLUMNS'),
+            'LINES': os.environ.get('LINES'),
+            'TERM': os.environ.get('TERM'),
+        })
         result = api.exec_create(
             container.id,
             command,
@@ -320,11 +328,7 @@ class Controller():
             tty = isatty,
             user = user,
             workdir = workdir,
-            environment = {
-                'COLUMNS': os.environ.get('COLUMNS'),
-                'LINES': os.environ.get('LINES'),
-                'TERM': os.environ.get('TERM'),
-            },
+            environment = environment,
         )
         dockerpty.start_exec(api, result['Id'], isatty)
         return api.exec_inspect(result['Id'])

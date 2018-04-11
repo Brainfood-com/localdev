@@ -44,6 +44,7 @@ COPY images/control/yaml2json /srv/localdev/scripts/yaml2json
 ENTRYPOINT ["/srv/localdev/scripts/entrypoint"]
 HEALTHCHECK --interval=15s CMD ["/srv/localdev/scripts/healthcheck"]
 
+COPY images/control/exec-helper /srv/localdev/scripts/exec-helper
 COPY images/control/run /srv/localdev/scripts/run
 COPY image-scripts/ /srv/localdev/image-scripts/
 

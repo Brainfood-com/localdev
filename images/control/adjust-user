@@ -11,43 +11,77 @@ TARGET_USER="$1"
 TARGET_GROUP="$2"
 shift 2
 
-if ! [[ $(getent passwd "$TARGET_USER") =~ ^([^:]+):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):(.*)$ ]]; then
-	echo "Couldn't parse: getent passwd" 1>&2
+declare -A target_user target_group map_user
+
+error() {
+	echo "$@" 1>&2
 	exit 1
-fi
-declare -A user=(
-	[name]="${BASH_REMATCH[1]}"
-	[password]="${BASH_REMATCH[2]}"
-	[uid]="${BASH_REMATCH[3]}"
-	[gid]="${BASH_REMATCH[4]}"
-	[gecos]="${BASH_REMATCH[5]}"
-	[home]="${BASH_REMATCH[6]}"
-	[shell]="${BASH_REMATCH[7]}"
-)
+}
 
-if ! [[ $(getent group "$TARGET_GROUP") =~ ^([^:]+):([^:]*):([^:]*):(.*)$ ]]; then
-	echo "Couldn't parse: getent group" 1>&2
-	exit 1
-fi
-declare -A group=(
-	[name]="${BASH_REMATCH[1]}"
-	[password]="${BASH_REMATCH[2]}"
-	[id]="${BASH_REMATCH[3]}"
-	[users]="${BASH_REMATCH[4]}"
-)
+parse_target() {
+	if ! [[ $(getent group "$TARGET_GROUP") =~ ^([^:]+):([^:]*):([^:]*):(.*)$ ]]; then
+		if [[ ${map_user[gid]} ]]; then
+			addgroup --quiet --gid ${map_user[gid]} "$TARGET_GROUP"
+			[[ $(getent group "$TARGET_GROUP") =~ ^([^:]+):([^:]*):([^:]*):(.*)$ ]] || error "Couldn't parse after add: getent group"
+		else
+			error "Couldn't parse: getent group"
+		fi
+	fi
+	target_group=(
+		[name]="${BASH_REMATCH[1]}"
+		[password]="${BASH_REMATCH[2]}"
+		[id]="${BASH_REMATCH[3]}"
+		[users]="${BASH_REMATCH[4]}"
+	)
+	if ! [[ $(getent passwd "$TARGET_USER") =~ ^([^:]+):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):(.*)$ ]]; then
+		if [[ ${map_user[uid]} ]]; then
+			adduser --quiet --uid ${map_user[uid]} --ingroup "$TARGET_GROUP" --gecos '' --disabled-password "$TARGET_USER"
+			[[ $(getent passwd "$TARGET_USER") =~ ^([^:]+):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):(.*)$ ]] || error "Couldn't parse after add: getent passwd"
+		else
+			error "Couldn't parse: getent passwd"
+		fi
+	fi
+	target_user=(
+		[name]="${BASH_REMATCH[1]}"
+		[password]="${BASH_REMATCH[2]}"
+		[uid]="${BASH_REMATCH[3]}"
+		[gid]="${BASH_REMATCH[4]}"
+		[gecos]="${BASH_REMATCH[5]}"
+		[home]="${BASH_REMATCH[6]}"
+		[shell]="${BASH_REMATCH[7]}"
+	)
+}
 
-if [[ $MAP_USER =~ ^uid=([0-9]+)\((.*)\)' 'gid=([0-9]+)\((.*)\)' 'groups=(.*)$ ]]; then
-	MAP_UID=${BASH_REMATCH[1]}
-	MAP_GID=${BASH_REMATCH[3]}
-fi
-if [[ $MAP_GID && $MAP_GID -ne 0 ]]; then
-	[[ ${group[id]} -ne $MAP_GID ]] && groupmod -g $MAP_GID "$TARGET_GROUP"
-fi
-if [[ $MAP_UID && $MAP_UID -ne 0 ]]; then
-	[[ ${user[uid]} -ne $MAP_UID ]] && usermod -u $MAP_UID "$TARGET_USER"
+# uid=1000(adam) gid=1000(adam) groups=1000(adam),24(cdrom),25(floppy),27(sudo),29(audio),30(dip),44(video),46(plugdev),108(netdev),999(docker)
+parse_map() {
+	if [[ $MAP_USER =~ ^uid=([0-9]+)\((.*)\)' 'gid=([0-9]+)\((.*)\)' 'groups=(.*)$ ]]; then
+		map_user=(
+			[uid]=${BASH_REMATCH[1]}
+			[user]="${BASH_REMATCH[2]}"
+			[gid]=${BASH_REMATCH[3]}
+			[group]="${BASH_REMATCH[4]}"
+		)
+	fi
+}
+if [[ -z ${TARGET_USER#*-} || -z ${TARGET_GROUP#*-} ]]; then
+	parse_map
+	[[ ${map_user[user]} && ${map_user[group]} ]] || error "Must pass a valid MAP_USER"
+	[[ -z ${TARGET_USER#*-} ]] && TARGET_USER="$TARGET_USER${map_user[user]}"
+	[[ -z ${TARGET_GROUP#*-} ]] && TARGET_GROUP="$TARGET_GROUP${map_user[group]}"
+	parse_target
+else
+	parse_target
+	parse_map
 fi
 
-find "${user[home]}" \
+if [[ ${map_user[gid]} && ${map_user[gid]} -ne 0 ]]; then
+	[[ ${target_group[id]} -ne ${map_user[gid]} ]] && groupmod -g ${map_user[gid]} "$TARGET_GROUP"
+fi
+if [[ ${map_user[uid]} && ${map_user[uid]} -ne 0 ]]; then
+	[[ ${target_user[uid]} -ne ${map_user[uid]} ]] && usermod -u ${map_user[uid]} "$TARGET_USER"
+fi
+
+find "${target_user[home]}" \
 	'(' -not -user "$TARGET_USER" -a -not -group "$TARGET_GROUP" -exec chown "$TARGET_USER:$TARGET_GROUP" '{}' + ')' -o \
 	'(' -not -user "$TARGET_USER" -exec chown "$TARGET_USER" '{}' + ')' -o \
 	'(' -not -group "$TARGET_GROUP" -exec chgrp "$TARGET_GROUP" '{}' + ')' -o \

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -e
+
+. /srv/localdev/scripts/adjust-user local- local-
+
+exec gosu "$TARGET_USER" "$@"
+exit 1
