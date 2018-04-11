@@ -74,7 +74,7 @@ class ExecTool(Tool):
     def run(self, controller, cmd, args):
         if len(args) == 0:
             args.append('bash')
-        return controller.exec_helper(controller.project_container, '/', None, args)
+        return controller.exec_helper(container = controller.project_container, workdir = '/', command = args)
 
     def help(self, controller, cmd):
         return ['Execute a command in the control container for this project.']
@@ -173,7 +173,7 @@ class ServiceTool(Tool):
         else:
             working_dir = '/'
 
-        return controller.exec_helper(tool_container, working_dir, target_user, [executable] + args)
+        return controller.exec_helper(container = tool_container, workdir = working_dir, user = target_user, command = [executable] + args)
 
     def help(self, controller, cmd):
         return ['Run the command in the service.']
@@ -280,7 +280,7 @@ class Controller():
             controller.parse_env(os.environ.get('MAP_ENV', ''))
             _environment_parsed = True
 
-    def exec_helper(self, container, workdir, user, command):
+    def exec_helper(self, container, workdir = '/', user = None, command = []):
         isatty = sys.stdout.isatty()
         api = self.docker.api
         result = api.exec_create(
@@ -303,7 +303,7 @@ class Controller():
         return self.tools[cmd].run(self, cmd, args)
 
     def compose_helper(self, which, args):
-        return self.exec_helper(self.project_container, self._map_top_dir, None, ['docker-compose', '-f', 'docker-compose.' + which + '.yml'] + args)
+        return self.exec_helper(container = self.project_container, workdir = self._map_top_dir, command = ['docker-compose', '-f', 'docker-compose.' + which + '.yml'] + args)
 
     def cmd(self, command):
         cmd = command.pop(0)
