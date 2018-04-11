@@ -30,8 +30,9 @@ def escape_compose_name(value):
 service_label_re = re.compile('^com\.brainfood\.docker\.localdev\.(target_pwd|target_user)(?:=(.*))?$')
 tool_label_re = re.compile('com\.brainfood\.docker\.localdev\.tool\.([^=.]+)(?:\.(target_pwd|target_user))?(?:=(.*))?$')
 class Service(object):
-    def __init__(self, name):
+    def __init__(self, name, controller):
         self.name = name
+        self.controller = controller
         self.target_pwd = None
         self.target_user = None
         self.tools = {}
@@ -43,49 +44,50 @@ class Service(object):
             self.__dict__[service_label_match.group(1)] = service_label_match.group(2)
         elif tool_label_match:
             tool_name = tool_label_match.group(1)
-            tool = self.tools.setdefault(tool_name, ServiceTool(self, tool_name))
+            tool = self.tools.setdefault(tool_name, ServiceTool(tool_name, self.controller))
             tool.absorbLabel(tool_label_match.group(2), tool_label_match.group(3))
 
 class Tool(object):
-    def __init__(self, name):
+    def __init__(self, name, controller):
         self.name = name
+        self.controller = controller
 
 class ParseEnvironmentTool(Tool):
-    def run(self, controller, cmd, args):
+    def run(self, cmd, args):
         if cmd is None:
-            controller.run_tool('help', args)
-        controller.parse_environment()
-        controller.tools.default_factory = lambda: InvalidTool('missing')
-        return controller.run_tool(cmd, args)
+            self.controller.run_tool('help', args)
+        self.controller.parse_environment()
+        self.controller.tools.default_factory = lambda: InvalidTool('missing')
+        return self.controller.run_tool(cmd, args)
 
 class InvalidTool(Tool):
-    def run(self, controller, cmd, args):
+    def run(self, cmd, args):
         eprint('Could not find tool: %s' % (cmd))
         sys.exit(1)
 
 class ComposeTool(Tool):
-    def run(self, controller, cmd, args):
-        return controller.compose_helper(cmd, args)
+    def run(self, cmd, args):
+        return self.controller.compose_helper(cmd, args)
 
-    def help(self, controller, cmd):
+    def help(self, cmd):
         return ['Call "docker-compose -f docker-compose.${cmd}.yml" ...']
 
 class ExecTool(Tool):
-    def run(self, controller, cmd, args):
+    def run(self, cmd, args):
         if len(args) == 0:
             args.append('bash')
-        return controller.exec_helper(container = controller.project_container, workdir = '/', command = args)
+        return self.controller.exec_helper(container = self.controller.project_container, workdir = '/', command = args)
 
-    def help(self, controller, cmd):
+    def help(self, cmd):
         return ['Execute a command in the control container for this project.']
 
 class HelpTool(Tool):
-    def run(self, controller, cmd, args):
-        controller.parse_environment()
+    def run(self, cmd, args):
+        self.controller.parse_environment()
         found_tools_by_tool = {}
         print('The following commands are available:')
         print()
-        for tool_name, tool in controller.tools.items():
+        for tool_name, tool in self.controller.tools.items():
             found_tool = found_tools_by_tool.setdefault(tool, {'tool': tool, 'names': []})
             found_tool['names'].append(tool_name)
 
@@ -97,7 +99,7 @@ class HelpTool(Tool):
             found_tool['name'] = name = names.pop(0)
             if len(name) > max_name_length:
                 max_name_length = len(name)
-            found_tool['help'] = help = found_tool['tool'].help(controller, name)
+            found_tool['help'] = help = found_tool['tool'].help(name)
             if len(names):
                 help.append('Aliases: ' + ', '.join(names))
 
@@ -120,12 +122,12 @@ class HelpTool(Tool):
 
         return {'ExitCode': 0}
 
-    def help(self, controller, cmd):
+    def help(self, cmd):
         return ['Show what tools are available.']
 
 class ServiceTool(Tool):
-    def __init__(self, service, name):
-        super(ServiceTool, self).__init__(name)
+    def __init__(self, name, service):
+        super(ServiceTool, self).__init__(name, service.controller)
         self.service = service
         self._target_pwd = None
         self._target_user = None
@@ -145,18 +147,18 @@ class ServiceTool(Tool):
         elif label is None and value:
             self.executable = value
 
-    def run(self, controller, cmd, args):
-        escaped_project_name = escape_compose_name(controller.vars['COMPOSE_PROJECT_NAME'])
+    def run(self, cmd, args):
+        escaped_project_name = escape_compose_name(self.controller.vars['COMPOSE_PROJECT_NAME'])
 
         labels = {
             'com.docker.compose.project' : escaped_project_name,
             'com.brainfood.docker.localdev.tool.' + cmd: None,
         }
-        tool_container = controller.find_container(labels)
+        tool_container = self.controller.find_container(labels)
         if not tool_container:
-            controller.tools['dev'].run(controller, 'dev', ['up', '-d', self.service.name])
+            self.controller.tools['dev'].run('dev', ['up', '-d', self.service.name])
             sleep(1)
-            tool_container = controller.find_container(labels)
+            tool_container = self.controller.find_container(labels)
 
         if not tool_container:
             eprint('Could not find tool: %s' % (cmd))
@@ -167,15 +169,15 @@ class ServiceTool(Tool):
         target_user = self.target_user
 
         if target_pwd == 'relative':
-            working_dir = '/srv/app' + controller._relative_dir
+            working_dir = '/srv/app' + self.controller._relative_dir
         elif target_pwd == 'image':
             working_dir = ''
         else:
             working_dir = '/'
 
-        return controller.exec_helper(container = tool_container, workdir = working_dir, user = target_user, command = [executable] + args)
+        return self.controller.exec_helper(container = tool_container, workdir = working_dir, user = target_user, command = [executable] + args)
 
-    def help(self, controller, cmd):
+    def help(self, cmd):
         return ['Run the command in the service.']
 
 shell_var_re = re.compile('^([^=]+)=(.*)$')
@@ -192,10 +194,10 @@ class Controller():
         self._relative_dir = self._map_pwd[len(self._map_top_dir):]
 
         self.services = {}
-        self.tools = defaultdict(lambda: ParseEnvironmentTool('parse-environment'))
-        self.tools['dev'] = self.tools['prod'] = ComposeTool('compose')
-        self.tools['exec'] = ExecTool('exec')
-        self.tools['help'] = HelpTool('help')
+        self.tools = defaultdict(lambda: ParseEnvironmentTool('parse-environment', self))
+        self.tools['dev'] = self.tools['prod'] = ComposeTool('compose', self)
+        self.tools['exec'] = ExecTool('exec', self)
+        self.tools['help'] = HelpTool('help', self)
         self.vars = {}
 
     @property
@@ -300,7 +302,7 @@ class Controller():
         return api.exec_inspect(result['Id'])
 
     def run_tool(self, cmd, args):
-        return self.tools[cmd].run(self, cmd, args)
+        return self.tools[cmd].run(cmd, args)
 
     def compose_helper(self, which, args):
         return self.exec_helper(container = self.project_container, workdir = self._map_top_dir, command = ['docker-compose', '-f', 'docker-compose.' + which + '.yml'] + args)
