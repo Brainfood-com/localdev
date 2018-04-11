@@ -298,7 +298,7 @@ class Controller():
                 'TERM': os.environ.get('TERM'),
             },
         )
-        dockerpty.start_exec(api, result['Id'])
+        dockerpty.start_exec(api, result['Id'], isatty)
         return api.exec_inspect(result['Id'])
 
     def run_tool(self, cmd, args):
