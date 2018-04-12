@@ -81,13 +81,11 @@ class ExecTool(ControllerTool):
     def help(self, cmd):
         return ['Execute a command in the control container for this project.']
 
-class HelpTool(ControllerTool):
-    def run(self, cmd, args):
-        self.controller.project.parse_environment()
+class ToolGroup(object):
+    def __init__(self, controller, group_name, tools):
+        self.group_name = group_name
         found_tools_by_tool = {}
-        print('The following commands are available:')
-        print()
-        for tool_name, tool in self.controller.tools.items() + self.controller.project.tools.items():
+        for tool_name, tool in tools.items():
             found_tool = found_tools_by_tool.setdefault(tool, {'tool': tool, 'names': []})
             found_tool['names'].append(tool_name)
 
@@ -103,14 +101,17 @@ class HelpTool(ControllerTool):
             if len(names):
                 help.append('Aliases: ' + ', '.join(names))
 
-        found_tools = found_tools_by_tool.values()
-        found_tools.sort(key=lambda found_tool: found_tool['name'])
+        self.max_name_length = max_name_length
+        self.found_tools = found_tools_by_tool.values()
+        self.found_tools.sort(key=lambda found_tool: found_tool['name'])
+
+    def print(self, indent, max_name_length):
         width = os.environ.get('COLUMNS', 80)
-        leader = ' ' * (8 + max_name_length + 1)
-        for found_tool in found_tools:
+        leader = indent + ' ' * (max_name_length + 1)
+        for found_tool in self.found_tools:
             name = found_tool['name']
             help = found_tool['help']
-            line_to_print = '        %s%s ' % (name, ' ' * (max_name_length - len(name)))
+            line_to_print = '%s%s%s ' % (indent, name, ' ' * (max_name_length - len(name)))
             while len(help):
                 help_words = help.pop(0).split()
                 while len(help_words):
@@ -119,6 +120,21 @@ class HelpTool(ControllerTool):
                     if len(line_to_print):
                         print(line_to_print)
                     line_to_print = leader
+
+class HelpTool(ControllerTool):
+    def run(self, cmd, args):
+        print('The following commands are available:')
+        print()
+
+        global_tools = ToolGroup(self.controller, 'global', self.controller.tools)
+        project_tools = ToolGroup(self.controller, 'project', self.controller.project.tools)
+
+        max_name_length = global_tools.max_name_length
+        if project_tools.max_name_length > max_name_length: max_name_length = project_tools.max_name_length
+
+        global_tools.print('    ', max_name_length)
+        print('===========')
+        project_tools.print('    ', max_name_length)
 
         return {'ExitCode': 0}
 
