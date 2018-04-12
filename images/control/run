@@ -105,10 +105,13 @@ class HelpTool(ControllerTool):
 
         global_tools = ToolGroup(self.controller, 'global', self.controller.tools)
         project_tools = ToolGroup(self.controller, 'project', self.controller.project.tools)
+        system_tools = ToolGroup(self.controller, 'system', self.controller.system.tools)
 
-        max_name_length = global_tools.max_name_length
+        max_name_length = max(map(lambda x: x.max_name_length, [global_tools, project_tools, system_tools]))
         if project_tools.max_name_length > max_name_length: max_name_length = project_tools.max_name_length
 
+        system_tools.print('    ', max_name_length)
+        print('===========')
         global_tools.print('    ', max_name_length)
         print('===========')
         project_tools.print('    ', max_name_length)
@@ -171,7 +174,6 @@ class ContainerTool(Tool):
         target_user = self.target_user
 
         if target_pwd == 'relative':
-            relative_dir = os.environ['MAP_PWD'][len(project.top_dir):]
             working_dir = None
         elif target_pwd == 'image':
             working_dir = ''
@@ -217,6 +219,10 @@ class Service(ProjectContainerConfig):
     def __init__(self, name, project, config):
         super(Service, self).__init__(project)
         self.name = name
+        self.image = None
+
+        if 'build' in config and 'image' in config:
+            self.image = config['image']
 
         if 'labels' in config:
             for label_str in config['labels']:
@@ -339,10 +345,48 @@ class Project(object):
 
         return self.controller.exec_helper(self.container, environment = environment, workdir = workdir, command = command)
 
+class SystemContainerConfig(ContainerConfig):
+    def __init__(self, controller, container):
+        super(SystemContainerConfig, self).__init__('com.brainfood.docker.localdev.sub.', controller)
+        self.controller = controller
+        self.container = container
+        for label, value in container.attrs['Labels'].items():
+            self.absorbLabel('%s=%s' % (label, value))
+
+    def containerExec(self, name, workdir = None, user = None, command = None):
+        return self.controller.exec_helper(container = self.container, workdir = workdir, user = user, command = command)
+
+class System(object):
+    def __init__(self, controller):
+        self.controller = controller
+        self._parsed_environment = False
+        self._containers = {}
+        self._tools = {}
+
+    @property
+    def tools(self):
+        self.parse_environment()
+        return self._tools
+
+    def parse_environment(self):
+        if self._parsed_environment:
+            return
+
+        labels = {
+            'com.brainfood.docker.localdev.sub': None,
+        }
+        for container in controller.find_containers(labels):
+            config = SystemToolContainerConfig(controller, container)
+            for name, tool in config.tools.items():
+                self._tools[name] = tool
+
+        self._parsed_environment = True
+
 class Controller():
     def __init__(self):
         self._docker = None
 
+        self.system = System(self)
         self.project = Project(self, os.environ['MAP_TOP_DIR'])
 
         self.tools = {}
@@ -356,7 +400,7 @@ class Controller():
             self._docker = docker.from_env()
         return self._docker
 
-    def find_container(self, labels):
+    def find_containers(self, labels):
         label_filters = []
         for label, value in labels.items():
             if value:
@@ -364,7 +408,10 @@ class Controller():
             else:
                 label_filters.append(label)
 
-        found = self.docker.containers.list(all = True, filters = {'label': label_filters}, sparse = True)
+        return self.docker.containers.list(all = True, filters = {'label': label_filters}, sparse = True)
+
+    def find_container(self, labels):
+        found = self.find_containers(labels)
         while len(found) > 1:
             found[0].remove(force = True)
             found.pop(0)
@@ -396,8 +443,10 @@ class Controller():
     def run_tool(self, cmd, args):
         if cmd in self.tools:
             tool = self.tools[cmd]
-        else:
+        elif cmd in self.project.tools:
             tool = self.project.tools[cmd]
+        else:
+            tool = self.system.tools[cmd]
         return tool.run(cmd, args)
 
     def cmd(self, command):
