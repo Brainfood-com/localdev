@@ -27,6 +27,9 @@ def eprint(*args, **kwargs):
 def escape_compose_name(value):
     return re.sub('[^a-zA-Z0-9]+', '', value)
 
+class InvalidArgsException(Exception):
+    pass
+
 service_label_re = re.compile('^com\.brainfood\.docker\.localdev\.(target_pwd|target_user)(?:=(.*))?$')
 tool_label_re = re.compile('com\.brainfood\.docker\.localdev\.tool\.([^=.]+)(?:\.(target_pwd|target_user))?(?:=(.*))?$')
 class Service(object):
@@ -67,7 +70,10 @@ class InvalidTool(Tool):
 
 class ComposeTool(ControllerTool):
     def run(self, cmd, args):
-        return self.controller.exec_helper(self.controller.project.container, workdir = self.controller.project.top_dir, command = ['docker-compose', '-f', 'docker-compose.' + cmd + '.yml'] + args)
+        if len(args) == 0:
+            raise InvalidArgsException('Please specify one of: dev, prod')
+        which = args.pop(0)
+        return self.controller.exec_helper(self.controller.project.container, workdir = self.controller.project.top_dir, command = ['docker-compose', '-f', 'docker-compose.' + which + '.yml'] + args)
 
     def help(self, cmd):
         return ['Call "docker-compose -f docker-compose.${cmd}.yml" ...']
@@ -174,7 +180,7 @@ class ServiceTool(Tool):
         }
         tool_container = controller.find_container(labels)
         if not tool_container:
-            controller.tools['dev'].run('dev', ['up', '-d', self.service.name])
+            controller.tools['compose'].run('compose', ['dev', 'up', '-d', self.service.name])
             sleep(1)
             tool_container = controller.find_container(labels)
 
@@ -314,7 +320,7 @@ class Controller():
         self.project = Project(self, os.environ['MAP_TOP_DIR'])
 
         self.tools = {}
-        self.tools['dev'] = self.tools['prod'] = ComposeTool('compose', self)
+        self.tools['compose'] = ComposeTool('compose', self)
         self.tools['exec'] = ExecTool('exec', self)
         self.tools['help'] = HelpTool('help', self)
 
