@@ -237,18 +237,32 @@ class Project(object):
     def tools(self):
         return self.compose.tools
 
+    def get_mapped_file_data(self, filename, environ_key):
+        if os.environ.has_key(environ_key):
+            return os.environ[environ_key]
+        else:
+            return self.get_project_file_data(filename)
+
     def parse_environment(self):
         if self._environment_parsed:
             return
 
-        self._compose = ComposeYml(self, os.environ.get('MAP_DEV_YML', ''))
+        data = self.get_mapped_file_data('docker-compose.%s.yml' % ('dev'), 'MAP_DEV_YML')
+        self._compose = ComposeYml(self, data)
 
-        for line in shlex.split(os.environ.get('MAP_ENV', ''), True):
+        data = self.get_mapped_file_data('.env', 'MAP_ENV')
+        for line in shlex.split(data, True):
             shell_var_match = shell_var_re.match(line)
             if shell_var_match:
                 self._vars[shell_var_match.group(1)] = shell_var_match.group(2)
 
         self._environment_parsed = True
+
+    def get_project_file_data(self, relative_path):
+        f = open('/srv/localdev/global_root/' + self.top_dir + '/' + relative_path, 'r')
+        data = f.read()
+        f.close()
+        return data
 
     @property
     def container(self):

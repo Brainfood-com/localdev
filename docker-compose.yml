@@ -28,6 +28,7 @@ services:
       - ./images:/srv/localdev/images:ro
       - ./subs:/srv/localdev/subs:ro
       - ssl:/srv/localdev/ssl:rw
+      - /:/srv/localdev/global_root:ro
     env_file:
       - .env
     environment:
