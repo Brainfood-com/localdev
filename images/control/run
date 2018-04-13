@@ -63,11 +63,6 @@ class ControllerTool(Tool):
         super(ControllerTool, self).__init__(name)
         self.controller = controller
 
-class InvalidTool(Tool):
-    def run(self, cmd, args):
-        eprint('Could not find tool: %s' % (cmd))
-        sys.exit(1)
-
 class ComposeTool(ControllerTool):
     def run(self, cmd, args):
         if len(args) == 0:
