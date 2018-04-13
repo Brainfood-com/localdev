@@ -118,45 +118,46 @@ class HelpTool(ControllerTool):
     def help(self, cmd):
         return ['Show what tools are available.']
 
-service_label_re = re.compile('^com\.brainfood\.docker\.localdev\.(target_pwd|target_user)(?:=(.*))?$')
-tool_label_re = re.compile('com\.brainfood\.docker\.localdev\.tool\.([^=.]+)(?:\.(target_pwd|target_user))?(?:=(.*))?$')
-class Service(object):
-    def __init__(self, name, project, config):
-        self.name = name
-        self.project = project
+tc_service_label_re = re.compile('^(target_pwd|target_user)(?:=(.*))?$')
+tc_tool_label_re = re.compile('^tool\.([^=.]+)(?:\.(target_pwd|target_user))?(?:=(.*))?$')
+class ContainerConfig(object):
+    def __init__(self, prefix):
+        self.prefix = prefix;
         self.target_pwd = None
         self.target_user = None
         self.tools = {}
 
-        if 'labels' in config:
-            for label_str in config['labels']:
-                self.absorbLabel(label_str)
-
     def absorbLabel(self, label):
-        service_label_match = service_label_re.match(label)
-        tool_label_match = tool_label_re.match(label)
+        if not label.startswith(self.prefix):
+            return
+        label = label[len(self.prefix):]
+        service_label_match = tc_service_label_re.match(label)
+        tool_label_match = tc_tool_label_re.match(label)
         if service_label_match:
             self.__dict__[service_label_match.group(1)] = service_label_match.group(2)
         elif tool_label_match:
             tool_name = tool_label_match.group(1)
-            tool = self.tools.setdefault(tool_name, ServiceTool(tool_name, self))
+            tool = self.tools.setdefault(tool_name, ContainerTool(tool_name, self))
             tool.absorbLabel(tool_label_match.group(2), tool_label_match.group(3))
 
-class ServiceTool(Tool):
-    def __init__(self, name, service):
-        super(ServiceTool, self).__init__(name)
-        self.service = service
+    def containerExec(self, name, workdir = None, user = None, command = None):
+        raise 'Not implemented'
+
+class ContainerTool(Tool):
+    def __init__(self, name, config):
+        super(ContainerTool, self).__init__(name)
+        self.config = config
         self._target_pwd = None
         self._target_user = None
         self.executable = name
 
     @property
     def target_pwd(self):
-        return self._target_pwd or self.service.target_pwd
+        return self._target_pwd or self.config.target_pwd
 
     @property
     def target_user(self):
-        return self._target_user or self.service.target_user
+        return self._target_user or self.config.target_user
 
     def absorbLabel(self, label, value):
         if label == 'target_pwd' or label == 'target_user':
@@ -165,40 +166,70 @@ class ServiceTool(Tool):
             self.executable = value
 
     def run(self, cmd, args):
-        project = self.service.project
-        controller = project.controller
-        escaped_project_name = escape_compose_name(project.vars['COMPOSE_PROJECT_NAME'])
-
-        labels = {
-            'com.docker.compose.project' : escaped_project_name,
-            'com.brainfood.docker.localdev.tool.' + cmd: None,
-        }
-        tool_container = controller.find_container(labels)
-        if not tool_container:
-            controller.tools['compose'].run('compose', ['dev', 'up', '-d', self.service.name])
-            sleep(1)
-            tool_container = controller.find_container(labels)
-
-        if not tool_container:
-            eprint('Could not find tool: %s' % (cmd))
-            sys.exit(1)
-
         executable = self.executable
         target_pwd = self.target_pwd
         target_user = self.target_user
 
         if target_pwd == 'relative':
             relative_dir = os.environ['MAP_PWD'][len(project.top_dir):]
-            working_dir = '/srv/app' + relative_dir
+            working_dir = None
         elif target_pwd == 'image':
             working_dir = ''
         else:
             working_dir = '/'
 
-        return controller.exec_helper(container = tool_container, workdir = working_dir, user = target_user, command = [executable] + args)
+        return self.config.containerExec(self.name, workdir = working_dir, user = target_user, command = [executable] + args)
 
     def help(self, cmd):
         return ['Run the command in the service.']
+
+class ProjectContainerConfig(ContainerConfig):
+    def __init__(self, project):
+        super(ProjectContainerConfig, self).__init__('com.brainfood.docker.localdev.')
+        self.project = project
+
+    def containerExec(self, name, workdir = None, user = None, command = None):
+        project = self.project
+
+        if workdir is None:
+            relative_dir = os.environ['MAP_PWD'][len(project.top_dir):]
+            workdir = '/srv/app' + relative_dir
+
+        controller = project.controller
+        escaped_project_name = escape_compose_name(project.vars['COMPOSE_PROJECT_NAME'])
+
+        labels = {
+            'com.docker.compose.project' : escaped_project_name,
+            self.prefix + 'tool.' + name: None,
+        }
+        tool_container = self.findContainer(labels)
+
+        if not tool_container:
+            eprint('Could not find tool: %s' % (name))
+            sys.exit(1)
+
+        return controller.exec_helper(container = tool_container, workdir = workdir, user = user, command = command)
+
+    def findContainer(self, labels):
+        raise 'Not implemented'
+
+class Service(ProjectContainerConfig):
+    def __init__(self, name, project, config):
+        super(Service, self).__init__(project)
+        self.name = name
+
+        if 'labels' in config:
+            for label_str in config['labels']:
+                self.absorbLabel(label_str)
+
+    def findContainer(self, labels):
+        controller = self.project.controller
+        container = controller.find_container(labels)
+        if not container:
+            controller.tools['compose'].run('compose', ['dev', 'up', '-d', self.name])
+            sleep(1)
+            container = controller.find_container(labels)
+        return container
 
 class ComposeYml(object):
     def __init__(self, project, data):
