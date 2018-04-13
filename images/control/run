@@ -30,30 +30,6 @@ def escape_compose_name(value):
 class InvalidArgsException(Exception):
     pass
 
-service_label_re = re.compile('^com\.brainfood\.docker\.localdev\.(target_pwd|target_user)(?:=(.*))?$')
-tool_label_re = re.compile('com\.brainfood\.docker\.localdev\.tool\.([^=.]+)(?:\.(target_pwd|target_user))?(?:=(.*))?$')
-class Service(object):
-    def __init__(self, name, project, config):
-        self.name = name
-        self.project = project
-        self.target_pwd = None
-        self.target_user = None
-        self.tools = {}
-
-        if 'labels' in config:
-            for label_str in config['labels']:
-                self.absorbLabel(label_str)
-
-    def absorbLabel(self, label):
-        service_label_match = service_label_re.match(label)
-        tool_label_match = tool_label_re.match(label)
-        if service_label_match:
-            self.__dict__[service_label_match.group(1)] = service_label_match.group(2)
-        elif tool_label_match:
-            tool_name = tool_label_match.group(1)
-            tool = self.tools.setdefault(tool_name, ServiceTool(tool_name, self))
-            tool.absorbLabel(tool_label_match.group(2), tool_label_match.group(3))
-
 class Tool(object):
     def __init__(self, name):
         self.name = name
@@ -141,6 +117,30 @@ class HelpTool(ControllerTool):
 
     def help(self, cmd):
         return ['Show what tools are available.']
+
+service_label_re = re.compile('^com\.brainfood\.docker\.localdev\.(target_pwd|target_user)(?:=(.*))?$')
+tool_label_re = re.compile('com\.brainfood\.docker\.localdev\.tool\.([^=.]+)(?:\.(target_pwd|target_user))?(?:=(.*))?$')
+class Service(object):
+    def __init__(self, name, project, config):
+        self.name = name
+        self.project = project
+        self.target_pwd = None
+        self.target_user = None
+        self.tools = {}
+
+        if 'labels' in config:
+            for label_str in config['labels']:
+                self.absorbLabel(label_str)
+
+    def absorbLabel(self, label):
+        service_label_match = service_label_re.match(label)
+        tool_label_match = tool_label_re.match(label)
+        if service_label_match:
+            self.__dict__[service_label_match.group(1)] = service_label_match.group(2)
+        elif tool_label_match:
+            tool_name = tool_label_match.group(1)
+            tool = self.tools.setdefault(tool_name, ServiceTool(tool_name, self))
+            tool.absorbLabel(tool_label_match.group(2), tool_label_match.group(3))
 
 class ServiceTool(Tool):
     def __init__(self, name, service):
