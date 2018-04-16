@@ -146,7 +146,7 @@ class ExecTool(ControllerTool):
     def run(self, cmd, args):
         if len(args) == 0:
             args.append('bash')
-        return self.controller.project.run(workdir = '/', command = args)
+        return self.controller.project.run(command = args)
 
     def help(self, cmd):
         return ['Execute a command in the control container for this project.']
