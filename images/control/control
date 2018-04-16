@@ -23,6 +23,7 @@ do_one_compose -f /srv/localdev/images/squid/docker-compose.yml
 export http_proxy=http://http-proxy:3128
 
 do_one_compose -f /srv/localdev/images/nexus3/docker-compose.yml
+do_one_compose -f /srv/localdev/subs/jenkins/docker-compose.yml
 
 do_one_compose -f /srv/localdev/subs/nginx-proxy/docker-compose.yml
 do_one_compose -p email-hub-dev -f /srv/localdev/subs/email-hub/docker-compose.dev.yml

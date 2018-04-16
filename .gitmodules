@@ -6,3 +6,7 @@
 	path = subs/email-hub
 	url = git@github.com:Brainfood-com/email-hub.git
 	branch = master
+[submodule "subs/jenkins"]
+	path = subs/jenkins
+	url = git@github.com:Brainfood-com/jenkins.git
+	branch = master
