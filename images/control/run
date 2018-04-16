@@ -239,6 +239,13 @@ class ContainerConfig(object):
     def containerExec(self, name, workdir = None, user = None, command = None):
         raise 'Not implemented'
 
+    def working_dir(self, tool):
+        if tool.target_pwd == 'image':
+            working_dir = ''
+        else:
+            working_dir = '/'
+        return working_dir
+
 class ContainerTool(Tool):
     def __init__(self, name, config):
         super(ContainerTool, self).__init__(name)
@@ -263,15 +270,9 @@ class ContainerTool(Tool):
 
     def run(self, cmd, args):
         executable = self.executable
-        target_pwd = self.target_pwd
         target_user = self.target_user
 
-        if target_pwd == 'relative':
-            working_dir = None
-        elif target_pwd == 'image':
-            working_dir = ''
-        else:
-            working_dir = '/'
+        working_dir = self.config.working_dir(self)
 
         return self.config.containerExec(self.name, workdir = working_dir, user = target_user, command = [executable] + args)
 
@@ -283,12 +284,13 @@ class ProjectContainerConfig(ContainerConfig):
         super(ProjectContainerConfig, self).__init__('com.brainfood.docker.localdev.')
         self.project = project
 
+    def working_dir(self, tool):
+        if tool.target_pwd == 'relative':
+            return '/srv/app' + self.project.relative_dir
+        return super(ProjectContainerConfig, self).working_dir(tool)
+
     def containerExec(self, name, workdir = None, user = None, command = None):
         project = self.project
-
-        if workdir is None:
-            relative_dir = os.environ['MAP_PWD'][len(project.top_dir):]
-            workdir = '/srv/app' + relative_dir
 
         controller = project.controller
         escaped_project_name = escape_compose_name(project.env['COMPOSE_PROJECT_NAME'])
@@ -353,6 +355,7 @@ class Project(object):
         self._container = None
         self._env = None
         self._environment_parsed = False
+        self._relative_dir = None
 
     @property
     def compose(self):
@@ -363,6 +366,13 @@ class Project(object):
     def env(self):
         self.parse_environment()
         return self._env
+
+    @property
+    def relative_dir(self):
+        relative_dir = self._relative_dir
+        if relative_dir is None:
+            self._relative_dir = relative_dir = os.environ['MAP_PWD'][len(self.top_dir):]
+        return relative_dir
 
     @property
     def tools(self):
