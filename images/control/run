@@ -348,14 +348,14 @@ class ComposeYml(object):
 
 shell_var_re = re.compile('^([^=]+)=(.*)$')
 class Project(object):
-    def __init__(self, controller, top_dir):
+    def __init__(self, controller):
         self.controller = controller
-        self.top_dir = top_dir
         self._compose = None
         self._container = None
         self._env = None
         self._environment_parsed = False
         self._relative_dir = None
+        self._top_dir = None
 
     @property
     def compose(self):
@@ -377,6 +377,13 @@ class Project(object):
     @property
     def tools(self):
         return self.compose.tools
+
+    @property
+    def top_dir(self):
+        top_dir = self._top_dir
+        if top_dir is None:
+            self._top_dir = top_dir = os.environ['MAP_TOP_DIR']
+        return top_dir
 
     def get_mapped_file_data(self, filename, environ_key):
         if os.environ.has_key(environ_key):
@@ -487,7 +494,7 @@ class Controller():
         self._docker = None
 
         self.system = System(self)
-        self.project = Project(self, os.environ['MAP_TOP_DIR'])
+        self.project = Project(self)
 
         self.tools = {}
         self.tools['compose'] = ComposeTool('compose', self)
